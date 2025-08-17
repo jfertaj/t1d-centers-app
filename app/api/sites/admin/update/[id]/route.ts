@@ -4,9 +4,9 @@ import { pool } from '@/lib/db';
 
 export async function PUT(
   req: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: { id: string } }
 ) {
-  const { id } = await context.params; // 👈 lo espera antes de usarlo
+  const { id } = params; // ✅ ya correcto, sin await
   const numericId = Number(id);
 
   if (!Number.isFinite(numericId)) {
