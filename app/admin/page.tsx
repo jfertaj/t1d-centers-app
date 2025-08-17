@@ -1,12 +1,9 @@
+// app/admin/page.tsx
+
 'use client';
 
-import dynamic from 'next/dynamic';
 import withAdmin from '@/components/withAdmin';
-
-// Importa solo de forma dinámica — sin SSR para MaterialReactTable
-const AdminCenterEditor = dynamic(() => import('@/components/AdminCenterEditor'), {
-  ssr: false,
-});
+import AdminCenterEditor from '@/components/AdminCenterEditorB'; // o A
 
 function AdminPage() {
   return <AdminCenterEditor />;

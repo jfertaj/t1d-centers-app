@@ -3,24 +3,27 @@
 import { useAuth } from 'react-oidc-context';
 import { useRouter } from 'next/navigation';
 import { userManager } from '@lib/auth';
+import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
 
 export default function HeaderWithLogout() {
   const auth = useAuth();
   const router = useRouter();
+  const groups = useCognitoGroups();
+  const isAdmin = groups.includes('admin');
 
   const handleLogout = async () => {
     try {
-      await userManager.removeUser(); // 🔒 Limpiar sesión local OIDC
+      await userManager.removeUser(); // 🔒 limpiar sesión local
       const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
       const logoutUri = process.env.NEXT_PUBLIC_COGNITO_LOGOUT_URI!;
       const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
-      window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(logoutUri)}`;
+      window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
+        logoutUri,
+      )}`;
     } catch (err) {
       console.error('❌ Error during logout:', err);
     }
   };
-
-  const isAdmin = auth.user?.profile?.['cognito:groups']?.includes('admin');
 
   if (!auth.isAuthenticated) return null;
 
@@ -33,7 +36,9 @@ export default function HeaderWithLogout() {
         </div>
         <div className="flex items-center space-x-4">
           {auth.user?.profile?.email && (
-            <span className="text-sm text-gray-700 hidden sm:inline">👤 {auth.user.profile.email}</span>
+            <span className="text-sm text-gray-700 hidden sm:inline">
+              👤 {auth.user.profile.email}
+            </span>
           )}
 
           {isAdmin && (

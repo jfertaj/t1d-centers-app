@@ -1,36 +1,48 @@
 'use client';
 
-import { useAuth } from 'react-oidc-context';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useAuth } from 'react-oidc-context';
+import { useRouter, usePathname } from 'next/navigation';
+import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
 
-export default function withAdmin<P>(Component: React.ComponentType<P>) {
-  return function AdminWrapper(props: P) {
+export default function withAdmin<P>(Wrapped: React.ComponentType<P>) {
+  return function AdminGuard(props: P) {
     const auth = useAuth();
     const router = useRouter();
-    const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+    const pathname = usePathname();
+
+    // ✅ grupos normalizados y tipados: string[]
+    const groups = useCognitoGroups();
+    const isAdmin = groups.includes('admin');
+
+    const [authorized, setAuthorized] = useState(false);
 
     useEffect(() => {
-      if (!auth.isLoading && auth.user) {
-        const groups: string[] = auth.user.profile['cognito:groups'] || [];
+      if (auth.isLoading) return;
 
-        if (groups.includes('admin')) {
-          setIsAuthorized(true);
-        } else {
-          setIsAuthorized(false);
-          router.replace('/unauthorized');
-        }
+      // no autenticado → manda a login (opcional: añade next)
+      if (!auth.isAuthenticated) {
+        router.push(`/login?next=${encodeURIComponent(pathname)}`);
+        return;
       }
-    }, [auth.isLoading, auth.user, router]);
 
-    if (auth.isLoading || isAuthorized === null) {
-      return (
-        <div className="flex items-center justify-center min-h-screen bg-gray-100">
-          <div className="text-gray-600">Checking admin access...</div>
-        </div>
-      );
+      // autenticado pero no admin → manda a not-authorized
+      if (!isAdmin) {
+        router.push('/not-authorized');
+        return;
+      }
+
+      // autenticado + admin
+      setAuthorized(true);
+    }, [auth.isLoading, auth.isAuthenticated, isAdmin, router, pathname]);
+
+    // placeholders mientras decidimos
+    if (auth.isLoading || (!auth.isAuthenticated && !authorized)) {
+      return <p className="text-center text-gray-600 py-12">Loading...</p>;
     }
 
-    return <Component {...props} />;
+    if (!authorized) return null;
+
+    return <Wrapped {...props} />;
   };
 }
