@@ -2,11 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params; // ✅ ya correcto, sin await
+export async function PUT(req: NextRequest, context: any) {
+  const { id } = context.params; // ✅ sin tipo en la firma
   const numericId = Number(id);
 
   if (!Number.isFinite(numericId)) {
@@ -80,6 +77,9 @@ export async function PUT(
     return NextResponse.json({ success: true, center: rows[0] });
   } catch (err) {
     console.error('❌ Error updating center:', err);
-    return NextResponse.json({ error: 'Failed to update center' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to update center', details: String(err) },
+      { status: 500 }
+    );
   }
 }

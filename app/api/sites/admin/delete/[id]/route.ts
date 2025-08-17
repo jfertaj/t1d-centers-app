@@ -1,12 +1,8 @@
-// app/api/sites/admin/delete/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // 👈 params es Promise en Next 15
-) {
-  const { id } = await params;                      // 👈 hay que await
+export async function DELETE(req: NextRequest, context: any) {
+  const { id } = (context as { params: { id: string } }).params;
   const numericId = Number(id);
 
   if (!Number.isFinite(numericId)) {
