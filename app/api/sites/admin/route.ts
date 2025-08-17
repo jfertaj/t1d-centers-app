@@ -1,22 +1,27 @@
-// app/api/sites/admin/update/[id]/route.ts
+// app/api/sites/admin/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params; // ✅ sin await
-  const numericId = Number(id);
-
-  if (!Number.isFinite(numericId)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+// GET /api/sites/admin  -> lista todos los centros
+export async function GET() {
+  try {
+    const res = await pool.query(
+      'SELECT * FROM clinical_centers ORDER BY name ASC'
+    );
+    return NextResponse.json({ centers: res.rows });
+  } catch (err) {
+    console.error('❌ Error fetching centers:', err);
+    return NextResponse.json({ error: 'Failed to fetch centers' }, { status: 500 });
   }
+}
 
+// PUT /api/sites/admin  -> actualiza por ID en el body (NO usa params)
+export async function PUT(req: NextRequest) {
   const body = await req.json();
 
   try {
     const {
+      id,
       name,
       address,
       city,
@@ -32,6 +37,10 @@ export async function PUT(
       email_3,
       phone_3,
     } = body;
+
+    if (!Number.isFinite(Number(id))) {
+      return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+    }
 
     const query = `
       UPDATE clinical_centers
@@ -68,11 +77,10 @@ export async function PUT(
       contact_name_3,
       email_3,
       phone_3,
-      numericId,
+      Number(id),
     ];
 
     const { rows } = await pool.query(query, values);
-
     if (rows.length === 0) {
       return NextResponse.json({ error: 'Center not found' }, { status: 404 });
     }
