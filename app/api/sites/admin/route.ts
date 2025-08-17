@@ -1,23 +1,22 @@
-// app/api/sites/admin/route.ts
+// app/api/sites/admin/update/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
-export async function GET() {
-  try {
-    const res = await pool.query('SELECT * FROM clinical_centers ORDER BY name ASC');
-    return NextResponse.json({ centers: res.rows });
-  } catch (err) {
-    console.error('❌ Error fetching centers:', err);
-    return NextResponse.json({ error: 'Failed to fetch centers' }, { status: 500 });
-  }
-}
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params; // ✅ sin await
+  const numericId = Number(id);
 
-export async function PUT(req: NextRequest) {
+  if (!Number.isFinite(numericId)) {
+    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  }
+
   const body = await req.json();
 
   try {
     const {
-      id,
       name,
       address,
       city,
@@ -51,6 +50,7 @@ export async function PUT(req: NextRequest) {
           email_3 = $13,
           phone_3 = $14
       WHERE id = $15
+      RETURNING *;
     `;
 
     const values = [
@@ -68,11 +68,16 @@ export async function PUT(req: NextRequest) {
       contact_name_3,
       email_3,
       phone_3,
-      id,
+      numericId,
     ];
 
-    await pool.query(query, values);
-    return NextResponse.json({ success: true });
+    const { rows } = await pool.query(query, values);
+
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Center not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, center: rows[0] });
   } catch (err) {
     console.error('❌ Error updating center:', err);
     return NextResponse.json({ error: 'Failed to update center' }, { status: 500 });
