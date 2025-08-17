@@ -3,19 +3,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
 export async function DELETE(
-  req: NextRequest,
-  context: { params: { id: string } }
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> } // 👈 params es Promise en Next 15
 ) {
-  // Next 15: params debe "await‑earse" antes de usarse
-  const { id } = await context.params;
+  const { id } = await params;                      // 👈 hay que await
   const numericId = Number(id);
 
   if (!Number.isFinite(numericId)) {
-    return NextResponse.json({ error: 'Missing or invalid center ID' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Missing or invalid center ID' },
+      { status: 400 }
+    );
   }
 
   try {
-    const res = await pool.query('DELETE FROM clinical_centers WHERE id = $1', [numericId]);
+    const res = await pool.query(
+      'DELETE FROM clinical_centers WHERE id = $1',
+      [numericId]
+    );
 
     if (res.rowCount === 0) {
       return NextResponse.json({ error: 'Center not found' }, { status: 404 });
