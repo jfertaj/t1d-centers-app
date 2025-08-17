@@ -1,0 +1,39 @@
+{
+  "name": "earlyt1d_centre_app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.1",
+    "@mui/material": "^7.3.1",
+    "amazon-cognito-identity-js": "^6.3.15",
+    "axios": "^1.8.4",
+    "material-react-table": "^3.2.1",
+    "next": "^15.4.5",
+    "oidc-client-ts": "^3.3.0",
+    "pg": "^8.16.3",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-hot-toast": "^2.5.2",
+    "react-oidc-context": "^3.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
+    "@types/node": "20.4.2",
+    "@types/react": "18.2.15",
+    "@types/react-dom": "18.2.7",
+    "autoprefixer": "^10.4.21",
+    "eslint": "8.45.0",
+    "eslint-config-next": "13.4.19",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.2.2"
+  }
+}

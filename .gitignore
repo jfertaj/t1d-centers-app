@@ -1,0 +1,21 @@
+# Node / Next
+node_modules
+.next
+out
+dist
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env & secrets
+.env
+.env*.local
+
+# macOS / IDE
+.DS_Store
+.vscode
+
+# Certs: ignora todo menos el bundle público
+certs/*
+!certs/global-bundle.pem
