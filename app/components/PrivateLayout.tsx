@@ -4,7 +4,7 @@
 import { useAuth } from 'react-oidc-context';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, ReactNode } from 'react';
-import { useCognitoGroups } from '../hooks/useCognitoGroups';
+import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
 
 // 👇 solo estas rutas NO exigen login
 const PUBLIC_PATHS = new Set<string>([
