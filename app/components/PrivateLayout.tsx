@@ -5,7 +5,7 @@ import { useAuth } from 'react-oidc-context';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, ReactNode } from 'react';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
-import HeaderWithLogout from '@/app/components/HeaderWithLogout';
+import HeaderWithLogout from '@/components/HeaderWithLogout';
 
 // 👇 rutas que NO exigen login
 const PUBLIC_PATHS = new Set<string>([
