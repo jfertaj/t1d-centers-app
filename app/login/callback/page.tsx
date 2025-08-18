@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { userManager } from '@/lib/auth';
+import { userManager } from '@lib/auth';
 
 export default function CallbackPage() {
   const router = useRouter();
