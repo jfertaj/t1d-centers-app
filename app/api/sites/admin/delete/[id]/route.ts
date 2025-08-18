@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+
 export async function DELETE(req: NextRequest, context: any) {
   const { id } = (context as { params: { id: string } }).params;
   const numericId = Number(id);

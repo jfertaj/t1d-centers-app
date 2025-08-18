@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+
+
 // GET /api/sites/admin  -> lista todos los centros
 export async function GET() {
   try {

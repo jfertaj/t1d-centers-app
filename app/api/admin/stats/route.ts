@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
 
 export async function GET() {
   try {

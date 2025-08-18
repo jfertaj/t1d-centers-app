@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
+export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+
 export async function PUT(req: NextRequest, context: any) {
   const { id } = context.params; // ✅ sin tipo en la firma
   const numericId = Number(id);
