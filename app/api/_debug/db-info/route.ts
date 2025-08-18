@@ -1,17 +1,19 @@
+// app/api/_debug/db-info/route.ts
 import { NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
 
 export async function GET() {
   try {
-    const { rows } = await pool.query('SELECT COUNT(*)::int AS count FROM clinical_centers;');
-    return NextResponse.json({
-      ok: true,
-      count: rows[0]?.count ?? 0,
-      db: process.env.PGDATABASE,
-      host: process.env.PGHOST,
-      user: process.env.PGUSER?.slice(0, 2) + '***', // no filtrar secretos
-    });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+    // ping sencillo + muestra a qué host cree que conecta
+    const { rows } = await pool.query('select now() as now');
+    return NextResponse.json(
+      { ok: true, now: rows[0]?.now, host: process.env.PGHOST },
+      { status: 200 },
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: String(err), host: process.env.PGHOST },
+      { status: 500 },
+    );
   }
 }
