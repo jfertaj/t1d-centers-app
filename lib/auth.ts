@@ -54,7 +54,7 @@ export function getUserManager(): UserManager {
     redirect_uri: getRedirectUri(),
     post_logout_redirect_uri: getPostLogoutRedirectUri(),
     response_type: 'code',
-    scope: 'openid email profile',
+    scope: 'openid email',
     // Almacenamiento en localStorage del navegador
     userStore: new WebStorageStateStore({ store: window.localStorage }),
     // Renovación silenciosa (si en el futuro habilitas iframe de silent renew)
