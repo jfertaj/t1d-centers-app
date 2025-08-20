@@ -57,7 +57,7 @@ export default function RegisterForm() {
     const newErrors: Record<string,string> = {};
     if (!form.name.trim()) newErrors.name = 'Center name is required';
     if (!form.address.trim()) newErrors.address = 'Address is required';
-    if (!form.city.trim()) newErrors.country = 'City is required';
+    if (!form.city.trim()) newErrors.city = 'City is required';
     if (!form.country.trim()) newErrors.country = 'Country is required';
     if (!form.zip_code.trim()) newErrors.zip_code = 'ZIP code is required';
 
@@ -134,7 +134,7 @@ export default function RegisterForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Center Name *" value={form.name} onChange={set('name')} error={errors.name} />
               <Input label="Address *" value={form.address} onChange={set('address')} error={errors.address} />
-              <Input label="City" value={form.city} onChange={set('city')} />
+              <Input label="City" value={form.city} onChange={set('city')} error={errors.city} />
               <Select label="Country *" value={form.country} onChange={set('country')} options={['', ...EU_COUNTRIES]} error={errors.country} />
               <Input label="ZIP Code *" value={form.zip_code} onChange={set('zip_code')} error={errors.zip_code} />
               <Select label="Type of ED" value={form.type_of_ed} onChange={set('type_of_ed')} options={['', 'High Risk', 'General Population']} />
