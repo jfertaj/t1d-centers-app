@@ -42,6 +42,8 @@ export default function RegisterForm() {
     detect_site: '',
   });
 
+  const [errors, setErrors] = useState<Record<string,string>>({});
+  const [contactError, setContactError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const set = (k: keyof Form) =>
@@ -52,14 +54,13 @@ export default function RegisterForm() {
     e.preventDefault();
     if (submitting) return;
 
-    // Validaciones
-    const errs: string[] = [];
-    if (!form.name.trim()) errs.push('Center name is required.');
-    if (!form.address.trim()) errs.push('Address is required.');
-    if (!form.country.trim()) errs.push('Country is required.');
-    if (!form.zip_code.trim()) errs.push('ZIP code is required.');
+    const newErrors: Record<string,string> = {};
+    if (!form.name.trim()) newErrors.name = 'Center name is required';
+    if (!form.address.trim()) newErrors.address = 'Address is required';
+    if (!form.country.trim()) newErrors.country = 'Country is required';
+    if (!form.zip_code.trim()) newErrors.zip_code = 'ZIP code is required';
 
-    // Al menos un contacto con Name + Email
+    // validar contacto
     const hasOneFullContact =
       (form.contact_name_1 && form.email_1) ||
       (form.contact_name_2 && form.email_2) ||
@@ -69,17 +70,17 @@ export default function RegisterForm() {
       (form.contact_name_6 && form.email_6);
 
     if (!hasOneFullContact) {
-      errs.push('Provide at least one contact with Name and Email.');
+      setContactError('Provide at least one contact with Name and Email');
+    } else {
+      setContactError('');
     }
 
-    if (errs.length) {
-      toast.error(errs[0]);
-      return;
-    }
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0 || !hasOneFullContact) return;
 
     setSubmitting(true);
     try {
-      // Limpia strings vacíos → null (para no forzar columnas)
       const payload: Record<string, any> = { ...form };
       Object.keys(payload).forEach((k) => {
         if (payload[k] === '') payload[k] = null;
@@ -91,13 +92,10 @@ export default function RegisterForm() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        throw new Error(t || 'Create failed');
-      }
+      if (!res.ok) throw new Error(await res.text());
 
       toast.success(`✅ Center "${form.name}" registered`);
-      router.push('/admin'); // vuelve al listado
+      router.push('/admin');
     } catch (err) {
       console.error(err);
       toast.error('❌ Failed to register center');
@@ -116,6 +114,8 @@ export default function RegisterForm() {
       type_of_ed: '',
       detect_site: '',
     });
+    setErrors({});
+    setContactError('');
   };
 
   return (
@@ -131,31 +131,21 @@ export default function RegisterForm() {
           <fieldset className="border border-gray-200 rounded-lg p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">Center information</legend>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Center Name *" value={form.name} onChange={set('name')} />
-              <Select
-                label="Type of ED"
-                value={form.type_of_ed}
-                onChange={set('type_of_ed')}
-                options={['', 'High Risk', 'General Population']}
-              />
-              <Input label="Detect Site" value={form.detect_site} onChange={set('detect_site')} />
+              <Input label="Center Name *" value={form.name} onChange={set('name')} error={errors.name} />
+              <Input label="Address *" value={form.address} onChange={set('address')} error={errors.address} />
               <Input label="City" value={form.city} onChange={set('city')} />
-              <Input label="Address *" className="md:col-span-2" value={form.address} onChange={set('address')} />
-              <Select
-                label="Country *"
-                value={form.country}
-                onChange={set('country')}
-                options={['', ...EU_COUNTRIES]}
-              />
-              <Input label="ZIP Code *" value={form.zip_code} onChange={set('zip_code')} />
+              <Select label="Country *" value={form.country} onChange={set('country')} options={['', ...EU_COUNTRIES]} error={errors.country} />
+              <Input label="ZIP Code *" value={form.zip_code} onChange={set('zip_code')} error={errors.zip_code} />
+              <Select label="Type of ED" value={form.type_of_ed} onChange={set('type_of_ed')} options={['', 'High Risk', 'General Population']} />
+              <Input label="Detect Site" value={form.detect_site} onChange={set('detect_site')} />
             </div>
           </fieldset>
 
-          {/* Contacts 1–6 */}
+          {/* Contacts */}
           {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
             <fieldset key={n} className="border border-gray-200 rounded-lg p-4">
               <legend className="px-2 text-sm font-semibold text-gray-700">
-                {n === 1 ? 'Primary' : `Contact ${n}`} {n === 1 ? '(at least Name + Email)' : '(optional)'}
+                {n === 1 ? 'Primary Contact (at least Name + Email)' : `Contact ${n} (optional)`}
               </legend>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input label="Name" value={(form as any)[`contact_name_${n}`] ?? ''} onChange={set(`contact_name_${n}` as any)} />
@@ -164,6 +154,7 @@ export default function RegisterForm() {
               </div>
             </fieldset>
           ))}
+          {contactError && <p className="text-sm text-red-600">{contactError}</p>}
 
           <div className="flex justify-between">
             <button type="button" onClick={() => router.push('/admin')} className="px-4 py-2 rounded-md border">
@@ -189,29 +180,34 @@ export default function RegisterForm() {
 }
 
 function Input(
-  props: React.InputHTMLAttributes<HTMLInputElement> & { label: string; className?: string }
+  props: React.InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string }
 ) {
-  const { label, className, ...rest } = props;
+  const { label, error, ...rest } = props;
   return (
-    <label className={`block ${className ?? ''}`}>
+    <label className="block">
       <span className="block text-sm text-gray-700 mb-1">{label}</span>
       <input
         {...rest}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+          error ? 'border-red-500' : 'border-gray-300'
+        }`}
       />
+      {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
     </label>
   );
 }
 
 function Select({
-  label, options, className, ...rest
-}: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: (string)[] }) {
+  label, options, error, ...rest
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: (string)[]; error?: string }) {
   return (
-    <label className={`block ${className ?? ''}`}>
+    <label className="block">
       <span className="block text-sm text-gray-700 mb-1">{label}</span>
       <select
         {...rest}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+        className={`w-full rounded-md border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+          error ? 'border-red-500' : 'border-gray-300'
+        }`}
       >
         {options.map((opt) => (
           <option key={opt || 'empty'} value={opt}>
@@ -219,6 +215,7 @@ function Select({
           </option>
         ))}
       </select>
+      {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
     </label>
   );
 }
