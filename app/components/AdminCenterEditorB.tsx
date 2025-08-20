@@ -11,6 +11,16 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 
+// Tarjeta resumen
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-white shadow rounded-lg p-4 text-center">
+      <div className="text-2xl font-bold text-inodia-blue">{value}</div>
+      <div className="text-sm text-gray-600 mt-1">{label}</div>
+    </div>
+  );
+}
+
 type Center = {
   id: number;
   name: string;
@@ -163,6 +173,12 @@ export default function AdminCenterEditor() {
           >
             Register New Center
           </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <StatCard label="Total Centers" value={totalCenters} />
+          <StatCard label="Countries" value={uniqueCountries} />
+          <StatCard label="Total Contacts" value={totalContacts} />
         </div>
 
         <MaterialReactTable

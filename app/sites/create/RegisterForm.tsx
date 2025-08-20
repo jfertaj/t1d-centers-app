@@ -57,6 +57,7 @@ export default function RegisterForm() {
     const newErrors: Record<string,string> = {};
     if (!form.name.trim()) newErrors.name = 'Center name is required';
     if (!form.address.trim()) newErrors.address = 'Address is required';
+    if (!form.city.trim()) newErrors.country = 'City is required';
     if (!form.country.trim()) newErrors.country = 'Country is required';
     if (!form.zip_code.trim()) newErrors.zip_code = 'ZIP code is required';
 
