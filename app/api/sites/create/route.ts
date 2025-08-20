@@ -1,6 +1,6 @@
 // app/api/sites/create/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { apiFetch } from '@/lib/api'; // usa el helper que ya creamos para llamar a la Lambda
+import { apiFetch } from '@lib/api'; // usa el helper que ya creamos para llamar a la Lambda
 
 export const runtime = 'nodejs';
 
