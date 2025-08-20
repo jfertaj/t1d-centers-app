@@ -1,23 +1,25 @@
 // app/api/sites/admin/update/[id]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const idNum = Number(params.id);
-  if (!Number.isFinite(idNum)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
-  }
-
+export async function PUT(req: Request) {
   try {
+    // Extrae el id del último segmento de la URL
+    const url = new URL(req.url);
+    const parts = url.pathname.split('/').filter(Boolean);
+    const idStr = parts[parts.length - 1];
+    const idNum = Number(idStr);
+
+    if (!Number.isFinite(idNum)) {
+      return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+    }
+
     const data = await req.json();
 
-    // Normalizamos a los nombres de columnas actuales (snake_case)
-    const payload = {
+    // Normaliza a snake_case para tu backend
+    const payload: Record<string, unknown> = {
       name: data.name ?? null,
       address: data.address ?? null,
       city: data.city ?? null,
@@ -50,30 +52,30 @@ export async function PUT(
       email_6: data.email_6 ?? null,
       phone_6: data.phone_6 ?? null,
 
-      // Si tu UI permite editar coords manualmente (si no, omítelos)
+      // si tu UI permite editar coords; si no, omítelos
       latitude: data.latitude ?? undefined,
       longitude: data.longitude ?? undefined,
     };
 
-    // Limpia undefined para no enviar claves vacías
-    Object.keys(payload).forEach((k) => {
-      // @ts-ignore
-      if (payload[k] === undefined) delete payload[k];
-    });
+    // Quita claves undefined (para no sobreescribir con undefined)
+    for (const [k, v] of Object.entries(payload)) {
+      if (v === undefined) delete (payload as any)[k];
+    }
 
-    // Llama a tu API Gateway → PUT /centers/:id
-    const result = await apiFetch(`/centers/${idNum}`, {
+    // Proxy a tu API Gateway → PUT /centers/:id
+    const upstream = await apiFetch(`/centers/${idNum}`, {
       method: 'PUT',
       body: payload,
     });
 
-    return NextResponse.json(result, { status: 200 });
+    // Devuelve lo que responda el backend
+    return NextResponse.json(upstream, { status: 200 });
   } catch (err: any) {
     console.error('❌ Upstream update error:', err);
-    const message = err?.message ?? 'Upstream error';
-    const status = /not found/i.test(message) ? 404 : 502;
+    const msg = err?.message ?? 'Upstream error';
+    const status = /not found/i.test(msg) ? 404 : 502;
     return NextResponse.json(
-      { error: 'Failed to update center', details: message },
+      { error: 'Failed to update center', details: msg },
       { status }
     );
   }

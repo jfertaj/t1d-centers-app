@@ -1,28 +1,21 @@
 // app/api/sites/list/route.ts
 import { NextResponse } from 'next/server';
-import { apiFetch } from '@lib/api'; // nuestro helper que apunta a API Gateway
+import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    // Llama a tu Lambda (API Gateway) → /centers
-    const centers = await apiFetch('/centers', { method: 'GET' });
-
-    // Devuelve la lista de centros directamente
-    return NextResponse.json(centers, { status: 200 });
+    const data = await apiFetch('/centers', { method: 'GET' });
+    return NextResponse.json(Array.isArray(data) ? data : [], { status: 200 });
   } catch (err: any) {
-    console.error('❌ /api/sites/list proxy error:', err);
+    console.error('❌ list centers proxy error:', err);
     return NextResponse.json(
-      {
-        error: 'Upstream error',
-        details: err?.message ?? String(err),
-      },
+      { error: 'Upstream error', details: String(err?.message || err) },
       { status: 502 },
     );
   }
 }
-
 
 
 // // app/api/sites/list/route.ts
