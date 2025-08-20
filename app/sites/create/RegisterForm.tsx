@@ -134,7 +134,7 @@ export default function RegisterForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Center Name *" value={form.name} onChange={set('name')} error={errors.name} />
               <Input label="Address *" value={form.address} onChange={set('address')} error={errors.address} />
-              <Input label="City" value={form.city} onChange={set('city')} error={errors.city} />
+              <Input label="City *" value={form.city} onChange={set('city')} error={errors.city} />
               <Select label="Country *" value={form.country} onChange={set('country')} options={['', ...EU_COUNTRIES]} error={errors.country} />
               <Input label="ZIP Code *" value={form.zip_code} onChange={set('zip_code')} error={errors.zip_code} />
               <Select label="Type of ED" value={form.type_of_ed} onChange={set('type_of_ed')} options={['', 'High Risk', 'General Population']} />

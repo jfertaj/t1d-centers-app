@@ -42,11 +42,30 @@ export default function HeaderWithLogout() {
           )}
 
           {isAdmin && (
+            <>
+              {/* Admin Panel con estilo distinto (gris oscuro) */}
+              <button
+                onClick={() => router.push('/admin')}
+                className="text-sm font-medium text-white bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg hover:bg-gray-900 transition"
+              >
+                Admin Panel
+              </button>
+              {/* Sites List mantiene el estilo azul */}
+              <button
+                onClick={() => router.push('/sites/list')}
+                className="text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-lg hover:bg-inodia-blue hover:text-white transition"
+              >
+                Sites List
+              </button>
+            </>
+          )}
+
+          {!isAdmin && (
             <button
-              onClick={() => router.push('/admin')}
+              onClick={() => router.push('/sites/list')}
               className="text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-lg hover:bg-inodia-blue hover:text-white transition"
             >
-              Admin Panel
+              Sites List
             </button>
           )}
 
