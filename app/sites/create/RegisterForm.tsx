@@ -4,245 +4,221 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
+type Form = {
+  name: string;
+  address: string;
+  city: string;
+  country: string;
+  zip_code: string;
+  type_of_ed: 'High Risk' | 'General Population' | '';
+  detect_site: string;
+
+  contact_name_1?: string; email_1?: string; phone_1?: string;
+  contact_name_2?: string; email_2?: string; phone_2?: string;
+  contact_name_3?: string; email_3?: string; phone_3?: string;
+  contact_name_4?: string; email_4?: string; phone_4?: string;
+  contact_name_5?: string; email_5?: string; phone_5?: string;
+  contact_name_6?: string; email_6?: string; phone_6?: string;
+};
+
+const EU_COUNTRIES = [
+  'Austria','Belgium','Bulgaria','Croatia','Cyprus','Czech Republic','Denmark','Estonia',
+  'Finland','France','Germany','Greece','Hungary','Ireland','Italy','Latvia','Lithuania',
+  'Luxembourg','Malta','Netherlands','Poland','Portugal','Romania','Slovakia','Slovenia',
+  'Spain','Sweden','United Kingdom','Norway','Switzerland','Iceland','Andorra','Monaco',
+  'San Marino','Liechtenstein'
+];
+
 export default function RegisterForm() {
   const router = useRouter();
 
-  const [formData, setFormData] = useState({
-    centerName: '',
+  const [form, setForm] = useState<Form>({
+    name: '',
     address: '',
     city: '',
     country: '',
-    zipCode: '',
-    primaryName: '',
-    primaryEmail: '',
-    primaryPhone: '',
-    secondaryName: '',
-    secondaryEmail: '',
-    secondaryPhone: '',
-    thirdName: '',
-    thirdEmail: '',
-    thirdPhone: '',
+    zip_code: '',
+    type_of_ed: '',
+    detect_site: '',
   });
 
-  const [errors, setErrors] = useState<{ [key: string]: string }>({});
-  const [contactWarning, setContactWarning] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setErrors(prev => ({ ...prev, [name]: '' }));
-  }
+  const set = (k: keyof Form) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value as any }));
 
-  async function handleSubmit(e: React.FormEvent) {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading) return;
-    setLoading(true);
+    if (submitting) return;
 
-    const newErrors: { [key: string]: string } = {};
-    const requiredFields = ['centerName', 'address', 'city', 'country', 'zipCode'];
-    requiredFields.forEach(field => {
-      if (!formData[field as keyof typeof formData]) {
-        newErrors[field] = 'This field is required';
-      }
-    });
+    // Validaciones
+    const errs: string[] = [];
+    if (!form.name.trim()) errs.push('Center name is required.');
+    if (!form.address.trim()) errs.push('Address is required.');
+    if (!form.country.trim()) errs.push('Country is required.');
+    if (!form.zip_code.trim()) errs.push('ZIP code is required.');
 
-    const hasAnyContact =
-      formData.primaryName || formData.primaryEmail || formData.primaryPhone ||
-      formData.secondaryName || formData.secondaryEmail || formData.secondaryPhone ||
-      formData.thirdName || formData.thirdEmail || formData.thirdPhone;
+    // Al menos un contacto con Name + Email
+    const hasOneFullContact =
+      (form.contact_name_1 && form.email_1) ||
+      (form.contact_name_2 && form.email_2) ||
+      (form.contact_name_3 && form.email_3) ||
+      (form.contact_name_4 && form.email_4) ||
+      (form.contact_name_5 && form.email_5) ||
+      (form.contact_name_6 && form.email_6);
 
-    setErrors(newErrors);
-    setContactWarning(!hasAnyContact);
+    if (!hasOneFullContact) {
+      errs.push('Provide at least one contact with Name and Email.');
+    }
 
-    if (Object.keys(newErrors).length > 0 || !hasAnyContact) {
-      toast.error('❌ Please fill in all required fields and at least one contact.');
-      setLoading(false);
+    if (errs.length) {
+      toast.error(errs[0]);
       return;
     }
 
+    setSubmitting(true);
     try {
-      const response = await fetch('/api/sites/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.centerName,
-          address: formData.address,
-          city: formData.city,
-          country: formData.country,
-          zip_code: formData.zipCode,
-          contact_name_1: formData.primaryName,
-          email_1: formData.primaryEmail,
-          phone_1: formData.primaryPhone,
-          contact_name_2: formData.secondaryName,
-          email_2: formData.secondaryEmail,
-          phone_2: formData.secondaryPhone,
-          contact_name_3: formData.thirdName,
-          email_3: formData.thirdEmail,
-          phone_3: formData.thirdPhone,
-        }),
+      // Limpia strings vacíos → null (para no forzar columnas)
+      const payload: Record<string, any> = { ...form };
+      Object.keys(payload).forEach((k) => {
+        if (payload[k] === '') payload[k] = null;
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('❌ Backend error:', errorData);
+      const res = await fetch('/api/sites/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-        if (errorData?.details?.includes('geocode')) {
-          toast.error('⚠️ Could not geocode the address. Please check it and try again.');
-        } else {
-          toast.error(`❌ Error: ${errorData.error || 'Unable to save the center'}`);
-        }
-
-        setLoading(false);
-        return;
+      if (!res.ok) {
+        const t = await res.text().catch(() => '');
+        throw new Error(t || 'Create failed');
       }
 
-      const result = await response.json();
-      toast.success(`✅ Center "${formData.centerName}" registered successfully`);
-      router.push(`/sites/success?center=${encodeURIComponent(formData.centerName)}`);
+      toast.success(`✅ Center "${form.name}" registered`);
+      router.push('/admin'); // vuelve al listado
     } catch (err) {
-      console.error('❌ Network error:', err);
-      toast.error('❌ Failed to submit. Please try again later.');
-      setLoading(false);
+      console.error(err);
+      toast.error('❌ Failed to register center');
+    } finally {
+      setSubmitting(false);
     }
-  }
+  };
 
-  function handleReset() {
-    setFormData({
-      centerName: '',
+  const reset = () => {
+    setForm({
+      name: '',
       address: '',
       city: '',
       country: '',
-      zipCode: '',
-      primaryName: '',
-      primaryEmail: '',
-      primaryPhone: '',
-      secondaryName: '',
-      secondaryEmail: '',
-      secondaryPhone: '',
-      thirdName: '',
-      thirdEmail: '',
-      thirdPhone: '',
+      zip_code: '',
+      type_of_ed: '',
+      detect_site: '',
     });
-    setErrors({});
-    setContactWarning(false);
-  }
-
-  function handleBack() {
-    router.push('/sites/list');
-  }
+  };
 
   return (
     <div className="px-4 py-10 bg-gray-100">
-      <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-lg p-8 mt-6">
-        <div className="flex items-center space-x-4 mb-6">
-          <img src="/innodia_cristal.png" alt="INNODIA Logo" className="w-12 h-12" />
+      <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <img src="/innodia_cristal.png" alt="INNODIA" className="w-10 h-10" />
           <h1 className="text-2xl font-bold text-inodia-blue">Register a New Clinical Center</h1>
         </div>
-        <p className="text-gray-600 mb-6">
-          Please fill in the form below to register a clinical site in the system.
-        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Campos generales */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              { label: 'Center Name', name: 'centerName' },
-              { label: 'Address', name: 'address' },
-              { label: 'City', name: 'city' },
-              { label: 'Country', name: 'country' },
-              { label: 'ZIP Code', name: 'zipCode' },
-            ].map(({ label, name }) => (
-              <div key={name}>
-                <label className="block text-sm font-medium text-gray-700">
-                  {label} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name={name}
-                  value={formData[name as keyof typeof formData]}
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-md p-2 mt-1"
-                />
-                {errors[name] && (
-                  <p className="text-sm text-red-600 mt-1">{errors[name]}</p>
-                )}
+        <form onSubmit={submit} className="space-y-8">
+          {/* Core */}
+          <fieldset className="border border-gray-200 rounded-lg p-4">
+            <legend className="px-2 text-sm font-semibold text-gray-700">Center information</legend>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Center Name *" value={form.name} onChange={set('name')} />
+              <Select
+                label="Type of ED"
+                value={form.type_of_ed}
+                onChange={set('type_of_ed')}
+                options={['', 'High Risk', 'General Population']}
+              />
+              <Input label="Detect Site" value={form.detect_site} onChange={set('detect_site')} />
+              <Input label="City" value={form.city} onChange={set('city')} />
+              <Input label="Address *" className="md:col-span-2" value={form.address} onChange={set('address')} />
+              <Select
+                label="Country *"
+                value={form.country}
+                onChange={set('country')}
+                options={['', ...EU_COUNTRIES]}
+              />
+              <Input label="ZIP Code *" value={form.zip_code} onChange={set('zip_code')} />
+            </div>
+          </fieldset>
+
+          {/* Contacts 1–6 */}
+          {Array.from({ length: 6 }, (_, i) => i + 1).map((n) => (
+            <fieldset key={n} className="border border-gray-200 rounded-lg p-4">
+              <legend className="px-2 text-sm font-semibold text-gray-700">
+                {n === 1 ? 'Primary' : `Contact ${n}`} {n === 1 ? '(at least Name + Email)' : '(optional)'}
+              </legend>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input label="Name" value={(form as any)[`contact_name_${n}`] ?? ''} onChange={set(`contact_name_${n}` as any)} />
+                <Input label="Email" type="email" value={(form as any)[`email_${n}`] ?? ''} onChange={set(`email_${n}` as any)} />
+                <Input label="Phone" value={(form as any)[`phone_${n}`] ?? ''} onChange={set(`phone_${n}` as any)} />
               </div>
-            ))}
-          </div>
+            </fieldset>
+          ))}
 
-          <hr className="my-6" />
-
-          {/* Contactos */}
-          {['Primary', 'Secondary', 'Third'].map((label, i) => {
-            const prefix = ['primary', 'secondary', 'third'][i];
-            return (
-              <div key={prefix}>
-                <h2 className="text-md font-bold text-inodia-blue mb-2">{label} Contact</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <input type="text" name={`${prefix}Name`} placeholder="Name" value={formData[`${prefix}Name` as keyof typeof formData]} onChange={handleChange} className="w-full border border-gray-300 rounded-md p-2" />
-                  <input type="email" name={`${prefix}Email`} placeholder="Email" value={formData[`${prefix}Email` as keyof typeof formData]} onChange={handleChange} className="w-full border border-gray-300 rounded-md p-2" />
-                  <input type="text" name={`${prefix}Phone`} placeholder="Phone" value={formData[`${prefix}Phone` as keyof typeof formData]} onChange={handleChange} className="w-full border border-gray-300 rounded-md p-2" />
-                </div>
-              </div>
-            );
-          })}
-
-          {contactWarning && (
-            <p className="text-sm text-yellow-600 mt-2">
-              ⚠️ You have not added any contact information. Please add at least one contact or continue anyway.
-            </p>
-          )}
-
-          {/* Botones */}
-          <div className="flex justify-between mt-6">
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="px-4 py-2 rounded-md border text-gray-700 bg-white hover:bg-gray-100"
-              >
-                ← Sites List
+          <div className="flex justify-between">
+            <button type="button" onClick={() => router.push('/admin')} className="px-4 py-2 rounded-md border">
+              ← Back to list
+            </button>
+            <div className="flex gap-3">
+              <button type="button" onClick={reset} className="px-4 py-2 rounded-md border">
+                Reset
               </button>
               <button
-                type="button"
-                onClick={handleReset}
-                className="px-4 py-2 rounded-md border text-gray-700 bg-white hover:bg-gray-100"
+                type="submit"
+                disabled={submitting}
+                className="px-4 py-2 bg-inodia-blue text-white rounded-md disabled:opacity-60"
               >
-                Reset form
+                {submitting ? 'Saving…' : 'Register'}
               </button>
             </div>
-            <button
-              type="submit"
-              className="button-blue flex items-center justify-center min-w-[120px]"
-            >
-              {loading ? (
-                <svg
-                  className="animate-spin h-5 w-5 text-white"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="white"
-                    strokeWidth="4"
-                    fill="none"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="white"
-                    d="M4 12a8 8 0 018-8v8H4z"
-                  />
-                </svg>
-              ) : (
-                'Register'
-              )}
-            </button>
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+function Input(
+  props: React.InputHTMLAttributes<HTMLInputElement> & { label: string; className?: string }
+) {
+  const { label, className, ...rest } = props;
+  return (
+    <label className={`block ${className ?? ''}`}>
+      <span className="block text-sm text-gray-700 mb-1">{label}</span>
+      <input
+        {...rest}
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+      />
+    </label>
+  );
+}
+
+function Select({
+  label, options, className, ...rest
+}: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: (string)[] }) {
+  return (
+    <label className={`block ${className ?? ''}`}>
+      <span className="block text-sm text-gray-700 mb-1">{label}</span>
+      <select
+        {...rest}
+        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+      >
+        {options.map((opt) => (
+          <option key={opt || 'empty'} value={opt}>
+            {opt || '— Select —'}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
