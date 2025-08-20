@@ -1,3 +1,4 @@
+// app/components/AdminCenterEditorB.tsx
 'use client';
 
 import {
@@ -11,7 +12,6 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 
-// Tarjeta resumen
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="bg-white shadow rounded-lg p-4 text-center">
@@ -20,6 +20,21 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     </div>
   );
 }
+
+// --- Opciones de selects ---
+const TYPE_OF_ED_OPTIONS = [
+  { value: 'High Risk', label: 'High Risk' },
+  { value: 'General Population', label: 'General Population' },
+];
+
+// Lista de países europeos (UE/EEE + UK)
+const EU_COUNTRIES = [
+  'Austria','Belgium','Bulgaria','Croatia','Cyprus','Czech Republic','Denmark',
+  'Estonia','Finland','France','Germany','Greece','Hungary','Iceland','Ireland',
+  'Italy','Latvia','Liechtenstein','Lithuania','Luxembourg','Malta','Netherlands',
+  'Norway','Poland','Portugal','Romania','Slovakia','Slovenia','Spain','Sweden',
+  'Switzerland','United Kingdom'
+].map((c) => ({ value: c, label: c }));
 
 type Center = {
   id: number;
@@ -42,7 +57,7 @@ type Center = {
   longitude: number | null;
 };
 
-export default function AdminCenterEditor() {
+export default function AdminCenterEditorB() {
   const [data, setData] = useState<Center[]>([]);
   const [loading, setLoading] = useState(true);
   const [centerToDelete, setCenterToDelete] = useState<Center | null>(null);
@@ -63,6 +78,21 @@ export default function AdminCenterEditor() {
     })();
   }, []);
 
+  const stats = useMemo(() => {
+    const totalCenters = data.length;
+    const uniqueCountries = new Set(
+      data.map((d) => d.country).filter(Boolean) as string[]
+    ).size;
+    const totalContacts = data.reduce((acc, c) => {
+      const names = [
+        c.contact_name_1, c.contact_name_2, c.contact_name_3,
+        c.contact_name_4, c.contact_name_5, c.contact_name_6,
+      ];
+      return acc + names.filter(Boolean).length;
+    }, 0);
+    return { totalCenters, uniqueCountries, totalContacts };
+  }, [data]);
+
   const handleSaveRow = async ({
     exitEditingMode,
     row,
@@ -73,8 +103,8 @@ export default function AdminCenterEditor() {
     values: Partial<Center>;
   }) => {
     try {
-      // limpiamos undefined para no enviar claves “vacías”
       const payload: Record<string, unknown> = { ...values };
+      delete payload.id;
       Object.keys(payload).forEach((k) => {
         // @ts-ignore
         if (payload[k] === undefined) delete payload[k];
@@ -89,7 +119,7 @@ export default function AdminCenterEditor() {
 
       toast.success(`✅ Updated: ${values.name ?? row.original.name}`);
       setData((prev) =>
-        prev.map((c) => (c.id === row.original.id ? { ...c, ...values } as Center : c)),
+        prev.map((c) => (c.id === row.original.id ? { ...c, ...values } as Center : c))
       );
       exitEditingMode();
     } catch (e) {
@@ -114,45 +144,77 @@ export default function AdminCenterEditor() {
     }
   };
 
+  // Columnas con selects en edición
   const columns = useMemo<MRT_ColumnDef<Center>[]>(() => [
-    // Core visibles
-    { accessorKey: 'name', header: 'Center Name' },
-    { accessorKey: 'address', header: 'Address' },
-    { accessorKey: 'city', header: 'City' },
-    { accessorKey: 'country', header: 'Country', size: 60 },
-    { accessorKey: 'zip_code', header: 'ZIP', size: 80 },
+    { accessorKey: 'name', header: 'Center Name',
+      muiEditTextFieldProps: { required: true } },
+    { accessorKey: 'address', header: 'Address',
+      muiEditTextFieldProps: { required: true } },
+    { accessorKey: 'city', header: 'City',
+      muiEditTextFieldProps: { required: true } },
 
-    // Campos extra (visibles)
-    { accessorKey: 'type_of_ed', header: 'Type of ED' },
+    {
+      accessorKey: 'country',
+      header: 'Country',
+      size: 60,
+      editVariant: 'select',
+      editSelectOptions: EU_COUNTRIES,
+      muiEditTextFieldProps: {
+        select: true,
+        required: true,
+      },
+    },
+    { accessorKey: 'zip_code', header: 'ZIP', size: 80,
+      muiEditTextFieldProps: { required: true } },
+
+    {
+      accessorKey: 'type_of_ed',
+      header: 'Type of ED',
+      editVariant: 'select',
+      editSelectOptions: TYPE_OF_ED_OPTIONS,
+      muiEditTextFieldProps: { select: true },
+    },
     { accessorKey: 'detect_site', header: 'Detect Site' },
 
     // Contacto principal
     { accessorKey: 'contact_name_1', header: 'Primary Contact' },
-    { accessorKey: 'email_1', header: 'Primary Email' },
-    { accessorKey: 'phone_1', header: 'Primary Phone' },
+    { accessorKey: 'email_1', header: 'Primary Email',
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_1', header: 'Primary Phone',
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
-    // Resto de contactos (ocultos por defecto — se pueden activar en el menú de columnas)
+    // Contactos 2..6 (ocultos de inicio, editables en modal)
     { accessorKey: 'contact_name_2', header: 'Contact 2', enableHiding: true },
-    { accessorKey: 'email_2', header: 'Email 2', enableHiding: true },
-    { accessorKey: 'phone_2', header: 'Phone 2', enableHiding: true },
+    { accessorKey: 'email_2', header: 'Email 2', enableHiding: true,
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_2', header: 'Phone 2', enableHiding: true,
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
     { accessorKey: 'contact_name_3', header: 'Contact 3', enableHiding: true },
-    { accessorKey: 'email_3', header: 'Email 3', enableHiding: true },
-    { accessorKey: 'phone_3', header: 'Phone 3', enableHiding: true },
+    { accessorKey: 'email_3', header: 'Email 3', enableHiding: true,
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_3', header: 'Phone 3', enableHiding: true,
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
     { accessorKey: 'contact_name_4', header: 'Contact 4', enableHiding: true },
-    { accessorKey: 'email_4', header: 'Email 4', enableHiding: true },
-    { accessorKey: 'phone_4', header: 'Phone 4', enableHiding: true },
+    { accessorKey: 'email_4', header: 'Email 4', enableHiding: true,
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_4', header: 'Phone 4', enableHiding: true,
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
     { accessorKey: 'contact_name_5', header: 'Contact 5', enableHiding: true },
-    { accessorKey: 'email_5', header: 'Email 5', enableHiding: true },
-    { accessorKey: 'phone_5', header: 'Phone 5', enableHiding: true },
+    { accessorKey: 'email_5', header: 'Email 5', enableHiding: true,
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_5', header: 'Phone 5', enableHiding: true,
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
     { accessorKey: 'contact_name_6', header: 'Contact 6', enableHiding: true },
-    { accessorKey: 'email_6', header: 'Email 6', enableHiding: true },
-    { accessorKey: 'phone_6', header: 'Phone 6', enableHiding: true },
+    { accessorKey: 'email_6', header: 'Email 6', enableHiding: true,
+      muiEditTextFieldProps: { type: 'email' } },
+    { accessorKey: 'phone_6', header: 'Phone 6', enableHiding: true,
+      muiEditTextFieldProps: { inputMode: 'tel' } },
 
-    // Coordenadas (ocultas de inicio)
+    // Coords ocultas
     { accessorKey: 'latitude', header: 'Lat', enableHiding: true },
     { accessorKey: 'longitude', header: 'Lng', enableHiding: true },
   ], []);
@@ -176,10 +238,16 @@ export default function AdminCenterEditor() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Total Centers" value={totalCenters} />
-          <StatCard label="Countries" value={uniqueCountries} />
-          <StatCard label="Total Contacts" value={totalContacts} />
+          <StatCard label="Total Centers" value={stats.totalCenters} />
+          <StatCard label="Countries" value={stats.uniqueCountries} />
+          <StatCard label="Total Contacts" value={stats.totalContacts} />
         </div>
+
+        {!loading && data.length === 0 && (
+          <div className="text-center text-gray-500 mb-4">
+            No centers found — try “Register New Center”.
+          </div>
+        )}
 
         <MaterialReactTable
           columns={columns}
@@ -191,10 +259,16 @@ export default function AdminCenterEditor() {
           enableFullScreenToggle
           enableHiding
           enableRowActions
-          renderRowActions={({ row, table }: { row: MRT_Row<Center>; table: MRT_TableInstance<Center> }) => (
+          renderRowActions={({
+            row,
+            table,
+          }: {
+            row: MRT_Row<Center>;
+            table: MRT_TableInstance<Center>;
+          }) => (
             <div className="flex gap-2">
               <button
-                onClick={() => table.setEditingRow(row)} // abre modal de edición
+                onClick={() => table.setEditingRow(row)}
                 className="px-2 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
               >
                 Edit
@@ -213,7 +287,6 @@ export default function AdminCenterEditor() {
           initialState={{
             pagination: { pageSize: 10, pageIndex: 0 },
             columnVisibility: {
-              // ocultamos de inicio columnas verbosas; el usuario puede activarlas
               contact_name_2: false, email_2: false, phone_2: false,
               contact_name_3: false, email_3: false, phone_3: false,
               contact_name_4: false, email_4: false, phone_4: false,
