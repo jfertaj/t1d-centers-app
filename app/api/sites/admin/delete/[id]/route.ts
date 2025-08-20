@@ -1,30 +1,31 @@
 // app/api/sites/admin/delete/[id]/route.ts
-import { NextResponse } from 'next/server';
-import { apiFetch } from '@lib/api';
-
 export const runtime = 'nodejs';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE!;
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } },
 ) {
-  const idNum = Number(params.id);
-  if (!Number.isFinite(idNum)) {
-    return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+  const id = Number(context?.params?.id);
+  if (!Number.isFinite(id)) {
+    return new Response(JSON.stringify({ error: 'Missing or invalid center ID' }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
   }
 
   try {
-    // Llama a tu API Gateway → DELETE /centers/:id
-    await apiFetch(`/centers/${idNum}`, { method: 'DELETE' });
-
-    return NextResponse.json({ success: true }, { status: 200 });
+    const r = await fetch(`${API_BASE}/centers/${id}`, { method: 'DELETE' });
+    const data = await r.json().catch(() => ({}));
+    return new Response(JSON.stringify(data), {
+      status: r.status,
+      headers: { 'content-type': 'application/json' },
+    });
   } catch (err: any) {
-    console.error('❌ Upstream delete error:', err);
-    const message = err?.message ?? 'Upstream error';
-    const status = /not found/i.test(message) ? 404 : 502;
-    return NextResponse.json(
-      { error: 'Failed to delete center', details: message },
-      { status }
+    return new Response(
+      JSON.stringify({ error: 'Failed to delete center', details: String(err) }),
+      { status: 500, headers: { 'content-type': 'application/json' } },
     );
   }
 }

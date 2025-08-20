@@ -1,16 +1,22 @@
-// app/api/_debug/db-info/route.ts
+// app/api/debug/db-info/route.ts
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
-export const runtime = 'nodejs'; // asegura runtime Node
+
+export const runtime = 'nodejs';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE!; // p.ej. https://.../prod/t1d-centers-proxy
 
 export async function GET() {
   try {
-    const r = await pool.query('select now() as now');
-    return NextResponse.json({ ok: true, now: r.rows[0]?.now, host: process.env.PGHOST }, { status: 200 });
-  } catch (err: any) {
+    const res = await fetch(`${API_BASE}/health`, { method: 'GET' });
+    const json = await res.json().catch(() => null);
     return NextResponse.json(
-      { ok: false, message: err?.message ?? String(err), code: err?.code ?? null, host: process.env.PGHOST },
-      { status: 500 }
+      { ok: res.ok, status: res.status, api: API_BASE, data: json },
+      { status: res.ok ? 200 : 500 },
+    );
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, api: API_BASE, error: String(e) },
+      { status: 500 },
     );
   }
 }
