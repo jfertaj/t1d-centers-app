@@ -1,3 +1,30 @@
+// app/api/sites/list/route.ts
+import { NextResponse } from 'next/server';
+import { apiFetch } from '@lib/api'; // nuestro helper que apunta a API Gateway
+
+export const runtime = 'nodejs';
+
+export async function GET() {
+  try {
+    // Llama a tu Lambda (API Gateway) → /centers
+    const centers = await apiFetch('/centers', { method: 'GET' });
+
+    // Devuelve la lista de centros directamente
+    return NextResponse.json(centers, { status: 200 });
+  } catch (err: any) {
+    console.error('❌ /api/sites/list proxy error:', err);
+    return NextResponse.json(
+      {
+        error: 'Upstream error',
+        details: err?.message ?? String(err),
+      },
+      { status: 502 },
+    );
+  }
+}
+
+
+
 // // app/api/sites/list/route.ts
 // import { NextResponse } from 'next/server';
 // import { Pool } from 'pg';
@@ -48,32 +75,40 @@
 // }
 
 // app/api/sites/list/route.ts
-import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
+// // app/api/sites/list/route.ts
+// import { NextResponse } from 'next/server';
+// import { getPool } from '@/lib/db';
 
-export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+// export const runtime = 'nodejs';
 
-export async function GET() {
-  try {
-    // Evita depender de 'created_at' si no existe en tu tabla:
-    const { rows } = await pool.query(`
-      SELECT id, name, address, city, country, zip_code, latitude, longitude
-      FROM clinical_centers
-      ORDER BY name ASC
-    `);
-    // Tu UI ya normaliza; devuelve array directamente
-    return NextResponse.json(rows, { status: 200 });
-  } catch (error: any) {
-    console.error('❌ /api/sites/list DB error:', error);
-    return NextResponse.json(
-      {
-        error: 'DB error',
-        details: error?.message ?? String(error),
-        code: error?.code,
-        host: process.env.PGHOST,
-        user: process.env.PGUSER ? 'set' : 'missing',
-      },
-      { status: 500 },
-    );
-  }
-}
+// export async function GET() {
+//   try {
+//     const pool = getPool();
+//     const { rows } = await pool.query(`
+//       SELECT id, name, address, city, country, zip_code, latitude, longitude
+//       FROM clinical_centers
+//       ORDER BY name ASC
+//     `);
+//     return NextResponse.json(rows, { status: 200 });
+//   } catch (error: any) {
+//     console.error('❌ /api/sites/list DB error:', error);
+//     return NextResponse.json(
+//       {
+//         error: 'DB error',
+//         details: error?.message ?? String(error),
+//         code: error?.code,
+//         host: process.env.PGHOST,
+//         haveEnv: {
+//           PGHOST: !!process.env.PGHOST,
+//           PGPORT: !!process.env.PGPORT,
+//           PGDATABASE: !!process.env.PGDATABASE,
+//           PGUSER: !!process.env.PGUSER,
+//           PGPASSWORD: !!process.env.PGPASSWORD,
+//           PGSSLMODE: process.env.PGSSLMODE ?? null,
+//           PGSSLROOTCERT: process.env.PGSSLROOTCERT ?? null,
+//         },
+//       },
+//       { status: 500 },
+//     );
+//   }
+// }

@@ -1,24 +1,20 @@
+// app/api/admin/stats/route.ts
 import { NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
-export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+import { apiFetch } from '@lib/api';
+
+export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const client = await pool.connect();
-
-    const totalRes = await client.query('SELECT COUNT(*) FROM centers');
-    const countryRes = await client.query('SELECT COUNT(DISTINCT country) FROM centers');
-    const geoRes = await client.query('SELECT COUNT(*) FROM centers WHERE latitude IS NOT NULL AND longitude IS NOT NULL');
-
-    client.release();
-
-    return NextResponse.json({
-      totalCenters: parseInt(totalRes.rows[0].count, 10),
-      countriesCount: parseInt(countryRes.rows[0].count, 10),
-      centersWithCoordinates: parseInt(geoRes.rows[0].count, 10),
+    const stats = await apiFetch('/admin/stats', {
+      method: 'GET',
     });
-  } catch (err) {
-    console.error('❌ Error fetching admin stats:', err);
-    return NextResponse.json({ error: 'Failed to fetch stats' }, { status: 500 });
+    return NextResponse.json(stats, { status: 200 });
+  } catch (err: any) {
+    console.error('❌ Error proxying admin stats:', err);
+    return NextResponse.json(
+      { error: 'Failed to fetch stats', details: err?.message ?? String(err) },
+      { status: 502 }
+    );
   }
 }

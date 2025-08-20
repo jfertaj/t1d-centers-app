@@ -1,87 +1,80 @@
 // app/api/sites/admin/update/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
+import { apiFetch } from '@lib/api';
 
-export const runtime = 'nodejs'; // aseguramos runtime Node, no Edge
+export const runtime = 'nodejs';
 
-export async function PUT(req: NextRequest, context: any) {
-  const { id } = context.params; // ✅ sin tipo en la firma
-  const numericId = Number(id);
-
-  if (!Number.isFinite(numericId)) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const idNum = Number(params.id);
+  if (!Number.isFinite(idNum)) {
     return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
   }
 
-  const body = await req.json();
-
   try {
-    const {
-      name,
-      address,
-      city,
-      country,
-      zip_code,
-      contact_name_1,
-      email_1,
-      phone_1,
-      contact_name_2,
-      email_2,
-      phone_2,
-      contact_name_3,
-      email_3,
-      phone_3,
-    } = body;
+    const data = await req.json();
 
-    const query = `
-      UPDATE clinical_centers
-      SET name = $1,
-          address = $2,
-          city = $3,
-          country = $4,
-          zip_code = $5,
-          contact_name_1 = $6,
-          email_1 = $7,
-          phone_1 = $8,
-          contact_name_2 = $9,
-          email_2 = $10,
-          phone_2 = $11,
-          contact_name_3 = $12,
-          email_3 = $13,
-          phone_3 = $14
-      WHERE id = $15
-      RETURNING *;
-    `;
+    // Normalizamos a los nombres de columnas actuales (snake_case)
+    const payload = {
+      name: data.name ?? null,
+      address: data.address ?? null,
+      city: data.city ?? null,
+      country: data.country ?? null,
+      zip_code: data.zip_code ?? null,
+      type_of_ed: data.type_of_ed ?? null,
+      detect_site: data.detect_site ?? null,
 
-    const values = [
-      name,
-      address,
-      city,
-      country,
-      zip_code,
-      contact_name_1,
-      email_1,
-      phone_1,
-      contact_name_2,
-      email_2,
-      phone_2,
-      contact_name_3,
-      email_3,
-      phone_3,
-      numericId,
-    ];
+      contact_name_1: data.contact_name_1 ?? null,
+      email_1: data.email_1 ?? null,
+      phone_1: data.phone_1 ?? null,
 
-    const { rows } = await pool.query(query, values);
+      contact_name_2: data.contact_name_2 ?? null,
+      email_2: data.email_2 ?? null,
+      phone_2: data.phone_2 ?? null,
 
-    if (rows.length === 0) {
-      return NextResponse.json({ error: 'Center not found' }, { status: 404 });
-    }
+      contact_name_3: data.contact_name_3 ?? null,
+      email_3: data.email_3 ?? null,
+      phone_3: data.phone_3 ?? null,
 
-    return NextResponse.json({ success: true, center: rows[0] });
-  } catch (err) {
-    console.error('❌ Error updating center:', err);
+      contact_name_4: data.contact_name_4 ?? null,
+      email_4: data.email_4 ?? null,
+      phone_4: data.phone_4 ?? null,
+
+      contact_name_5: data.contact_name_5 ?? null,
+      email_5: data.email_5 ?? null,
+      phone_5: data.phone_5 ?? null,
+
+      contact_name_6: data.contact_name_6 ?? null,
+      email_6: data.email_6 ?? null,
+      phone_6: data.phone_6 ?? null,
+
+      // Si tu UI permite editar coords manualmente (si no, omítelos)
+      latitude: data.latitude ?? undefined,
+      longitude: data.longitude ?? undefined,
+    };
+
+    // Limpia undefined para no enviar claves vacías
+    Object.keys(payload).forEach((k) => {
+      // @ts-ignore
+      if (payload[k] === undefined) delete payload[k];
+    });
+
+    // Llama a tu API Gateway → PUT /centers/:id
+    const result = await apiFetch(`/centers/${idNum}`, {
+      method: 'PUT',
+      body: payload,
+    });
+
+    return NextResponse.json(result, { status: 200 });
+  } catch (err: any) {
+    console.error('❌ Upstream update error:', err);
+    const message = err?.message ?? 'Upstream error';
+    const status = /not found/i.test(message) ? 404 : 502;
     return NextResponse.json(
-      { error: 'Failed to update center', details: String(err) },
-      { status: 500 }
+      { error: 'Failed to update center', details: message },
+      { status }
     );
   }
 }
