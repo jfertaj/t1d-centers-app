@@ -4,6 +4,7 @@ import { useAuth } from 'react-oidc-context';
 import { useRouter } from 'next/navigation';
 import { userManager } from '@lib/auth';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
+import { Settings } from 'lucide-react'; // 👈 Importamos el icono corporativo
 
 export default function HeaderWithLogout() {
   const auth = useAuth();
@@ -43,14 +44,14 @@ export default function HeaderWithLogout() {
 
           {isAdmin && (
             <>
-              {/* Admin Panel con estilo distinto (gris oscuro) */}
+              {/* Admin Panel con icono corporativo */}
               <button
                 onClick={() => router.push('/admin')}
-                className="text-sm font-medium text-white bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg hover:bg-gray-900 transition"
+                className="flex items-center gap-2 text-sm font-medium text-white bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg hover:bg-gray-900 transition"
               >
-                Admin Panel
+                <Settings className="w-4 h-4" /> Admin Panel
               </button>
-              {/* Sites List mantiene el estilo azul */}
+              {/* Sites List mantiene estilo azul */}
               <button
                 onClick={() => router.push('/sites/list')}
                 className="text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-lg hover:bg-inodia-blue hover:text-white transition"
