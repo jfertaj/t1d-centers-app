@@ -292,7 +292,7 @@ export default function AdminCenterEditorB() {
               contact_name_4: false, email_4: false, phone_4: false,
               contact_name_5: false, email_5: false, phone_5: false,
               contact_name_6: false, email_6: false, phone_6: false,
-              latitude: false, longitude: false,
+              latitude: true, longitude: true,
             },
           }}
           muiTableContainerProps={{ className: 'rounded-lg border border-gray-200' }}
