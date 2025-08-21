@@ -66,44 +66,48 @@ export default function RegisterForm() {
 
   // ——————————————————————————
   // Geocodificación previa (bloqueante si falla o es “partial”)
-  // Admite endpoint "simple" (location) o "enriquecido" (quality, candidate)
+  // Usa /api/geocoding/verify que devuelve { ok, partial, formatted_address, location }
   // ——————————————————————————
   async function precheckGeocoding(): Promise<boolean> {
     try {
-      const address = [form.address, form.city, form.zip_code, form.country]
-        .filter(Boolean).join(', ');
-      const res = await fetch('/api/coordinates', {
+      const payload = {
+        address: form.address,
+        city: form.city,
+        zip_code: form.zip_code,
+        country: form.country,
+      };
+
+      const res = await fetch('/api/geocoding/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json().catch(() => ({}));
 
-      // Si el endpoint simple devuelve {location}, lo aceptamos como OK
-      if (res.ok && data?.location && !data?.quality) {
-        return true;
-      }
-
-      // Si es enriquecido, miramos quality/status
-      if (!res.ok || data?.quality === 'ERROR' || data?.status === 'ZERO_RESULTS') {
+      if (!res.ok) {
+        // Error del endpoint → bloquear
         setGeoCandidate(null);
         setGeoModalText('Address could not be geolocated. Please review and try again.');
         setGeoModalOpen(true);
         return false;
       }
 
-      if (data?.quality === 'PARTIAL') {
-        setGeoCandidate(data?.formattedAddress || data?.candidate?.formatted_address || null);
-        setGeoModalText('The address was only partially matched. Please verify or refine it.');
+      if (!data.ok) {
+        // NO_RESULTS o partial === true (bloqueamos en ambos casos)
+        setGeoCandidate(data.formatted_address ?? null);
+        setGeoModalText(
+          data.partial
+            ? 'The address was only partially matched. Please verify or refine it.'
+            : 'Address could not be geolocated. Please review and try again.'
+        );
         setGeoModalOpen(true);
         return false;
       }
 
-      // quality === 'OK'
+      // ok === true → continuar
       return true;
-    } catch (e) {
-      // Cualquier excepción → bloquear y pedir corrección
+    } catch {
       setGeoCandidate(null);
       setGeoModalText('Address could not be geolocated. Please review and try again.');
       setGeoModalOpen(true);
@@ -111,14 +115,14 @@ export default function RegisterForm() {
     }
   }
 
-    // helper: contacto válido si al menos 2 de 3 campos están rellenados
-    const isContactValid = (name?: string, email?: string, phone?: string) => {
-      let count = 0;
-      if (name && name.trim()) count++;
-      if (email && email.trim()) count++;
-      if (phone && phone.trim()) count++;
-      return count >= 2;  // válido si hay al menos 2
-    };  
+  // helper: contacto válido si al menos 2 de 3 campos están rellenados
+  const isContactValid = (name?: string, email?: string, phone?: string) => {
+    let count = 0;
+    if (name && name.trim()) count++;
+    if (email && email.trim()) count++;
+    if (phone && phone.trim()) count++;
+    return count >= 2;  // válido si hay al menos 2
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +150,9 @@ export default function RegisterForm() {
     } else {
       setContactError('');
     }
-    
+
+    setErrors(newErrors);
+
     if (Object.keys(newErrors).length > 0 || !hasOneValidContact) {
       // no intentamos geocodificar si faltan campos requeridos
       return;
@@ -311,7 +317,23 @@ export default function RegisterForm() {
       {geoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full text-center">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">Address could not be geolocated</h2>
+            <div className="flex items-center justify-center mb-3">
+              {/* Icono de advertencia amarillo */}
+              <svg
+                className="w-10 h-10 text-yellow-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.721-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.742 2.987H3.48c-1.53 0-2.492-1.653-1.742-2.987l6.519-11.59zM11 14a1 1 0 11-2 0 1 1 0 012 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">
+              Address could not be geolocated
+            </h2>
             <p className="text-sm text-gray-700">{geoModalText}</p>
             {geoCandidate && (
               <p className="text-sm text-gray-700 mt-2">
