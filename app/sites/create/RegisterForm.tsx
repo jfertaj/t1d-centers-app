@@ -147,7 +147,7 @@ export default function RegisterForm() {
       setContactError('');
     }
     
-    if (Object.keys(newErrors).length > 0 || !hasOneFullContact) {
+    if (Object.keys(newErrors).length > 0 || !hasOneValidContact) {
       // no intentamos geocodificar si faltan campos requeridos
       return;
     }
@@ -239,7 +239,7 @@ export default function RegisterForm() {
           {/* Primary contact (siempre visible) */}
           <fieldset className="border border-gray-200 rounded-lg p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">
-              Primary Contact (at least Name + Email)
+              Primary Contact (any two of: Name, Email, Phone)
             </legend>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Input label="Name" value={form.contact_name_1 ?? ''} onChange={set('contact_name_1')} />
