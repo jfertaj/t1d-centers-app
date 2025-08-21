@@ -111,3 +111,10 @@
     @apply bg-inodia-blue hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded mt-6;
   }
 }
+
+/* 🔹 Estilo base para TODOS los botones */
+@layer base {
+  button {
+    @apply cursor-pointer;
+  }
+}

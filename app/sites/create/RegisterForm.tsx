@@ -29,6 +29,8 @@ const EU_COUNTRIES = [
   'San Marino','Liechtenstein'
 ];
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+
 export default function RegisterForm() {
   const router = useRouter();
 
@@ -65,10 +67,13 @@ export default function RegisterForm() {
       setForm((f) => ({ ...f, [k]: e.target.value as any }));
 
   // ——————————————————————————
-  // Geocodificación previa (bloqueante si falla o es “partial”)
-  // Usa /api/geocoding/verify que devuelve { ok, partial, formatted_address, location }
+  // Geocodificación previa contra Lambda/API Gateway
   // ——————————————————————————
   async function precheckGeocoding(): Promise<boolean> {
+    if (!API_BASE) {
+      toast.error('API base URL is not configured (NEXT_PUBLIC_API_BASE).');
+      return false;
+    }
     try {
       const payload = {
         address: form.address,
@@ -77,16 +82,15 @@ export default function RegisterForm() {
         country: form.country,
       };
 
-      const res = await fetch('/api/geocoding/verify', {
+      const res = await fetch(`${API_BASE}/geocoding/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        // Error del endpoint → bloquear
         setGeoCandidate(null);
         setGeoModalText('Address could not be geolocated. Please review and try again.');
         setGeoModalOpen(true);
@@ -94,7 +98,7 @@ export default function RegisterForm() {
       }
 
       if (!data.ok) {
-        // NO_RESULTS o partial === true (bloqueamos en ambos casos)
+        // bloqueamos tanto en NO_RESULTS como en partial === true
         setGeoCandidate(data.formatted_address ?? null);
         setGeoModalText(
           data.partial
@@ -121,7 +125,7 @@ export default function RegisterForm() {
     if (name && name.trim()) count++;
     if (email && email.trim()) count++;
     if (phone && phone.trim()) count++;
-    return count >= 2;  // válido si hay al menos 2
+    return count >= 2;
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -135,6 +139,7 @@ export default function RegisterForm() {
     if (!form.country.trim()) newErrors.country = 'Country is required';
     if (!form.zip_code.trim()) newErrors.zip_code = 'ZIP code is required';
     if (!form.type_of_ed.trim()) newErrors.type_of_ed = 'Type of ED is required';
+    setErrors(newErrors);
 
     // validar contactos (al menos 1 válido: 2 de 3 campos rellenados)
     const hasOneValidContact =
@@ -151,10 +156,7 @@ export default function RegisterForm() {
       setContactError('');
     }
 
-    setErrors(newErrors);
-
     if (Object.keys(newErrors).length > 0 || !hasOneValidContact) {
-      // no intentamos geocodificar si faltan campos requeridos
       return;
     }
 
@@ -162,20 +164,28 @@ export default function RegisterForm() {
     const geoOk = await precheckGeocoding();
     if (!geoOk) return;
 
+    if (!API_BASE) {
+      toast.error('API base URL is not configured (NEXT_PUBLIC_API_BASE).');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload: Record<string, any> = { ...form };
       Object.keys(payload).forEach((k) => {
-        if (payload[k] === '') payload[k] = null;
+        if ((payload as any)[k] === '') (payload as any)[k] = null;
       });
 
-      const res = await fetch('/api/sites/create', {
+      const res = await fetch(`${API_BASE}/centers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(txt || `Save failed (${res.status})`);
+      }
 
       toast.success(`✅ Center "${form.name}" registered`);
       router.push('/admin');
@@ -259,7 +269,7 @@ export default function RegisterForm() {
             <button
               type="button"
               onClick={() => setShowOptional((s) => !s)}
-              className="text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-md hover:bg-inodia-blue hover:text-white transition"
+              className="text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-md hover:bg-inodia-blue hover:text-white transition cursor-pointer"
             >
               {showOptional ? 'Hide additional contacts' : 'Add additional contacts'}
             </button>
@@ -268,7 +278,7 @@ export default function RegisterForm() {
               <button
                 type="button"
                 onClick={addAnotherContact}
-                className="text-sm font-medium text-white bg-inodia-blue px-4 py-2 rounded-md hover:bg-blue-700 transition"
+                className="text-sm font-medium text-white bg-inodia-blue px-4 py-2 rounded-md hover:bg-blue-700 transition cursor-pointer"
               >
                 + Add contact
               </button>
@@ -294,17 +304,17 @@ export default function RegisterForm() {
           {contactError && <p className="text-sm text-red-600">{contactError}</p>}
 
           <div className="flex justify-between">
-            <button type="button" onClick={() => router.push('/admin')} className="px-4 py-2 rounded-md border">
+            <button type="button" onClick={() => router.push('/admin')} className="px-4 py-2 rounded-md border cursor-pointer">
               ← Back to list
             </button>
             <div className="flex gap-3">
-              <button type="button" onClick={reset} className="px-4 py-2 rounded-md border">
+              <button type="button" onClick={reset} className="px-4 py-2 rounded-md border cursor-pointer">
                 Reset
               </button>
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-4 py-2 bg-inodia-blue text-white rounded-md disabled:opacity-60"
+                className="px-4 py-2 bg-inodia-blue text-white rounded-md disabled:opacity-60 cursor-pointer"
               >
                 {submitting ? 'Saving…' : 'Register'}
               </button>
@@ -349,7 +359,7 @@ export default function RegisterForm() {
                     addressRef.current?.focus();
                   }, 0);
                 }}
-                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="px-5 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer"
               >
                 OK
               </button>
