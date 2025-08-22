@@ -29,7 +29,8 @@ const EU_COUNTRIES = [
   'San Marino','Liechtenstein'
 ];
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+const RAW_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+const API_BASE = RAW_BASE.replace(/\/+$/, '');
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -188,7 +189,8 @@ export default function RegisterForm() {
       }
 
       toast.success(`✅ Center "${form.name}" registered`);
-      router.push('/admin');
+      // ⬇️ redirige a la lista pública (autorizada para todos los autenticados)
+      router.push('/sites/list');
     } catch (err) {
       console.error(err);
       toast.error('❌ Failed to register center');
@@ -304,7 +306,8 @@ export default function RegisterForm() {
           {contactError && <p className="text-sm text-red-600">{contactError}</p>}
 
           <div className="flex justify-between">
-            <button type="button" onClick={() => router.push('/admin')} className="px-4 py-2 rounded-md border cursor-pointer">
+            {/* ⬇️ lleva a la lista accesible */}
+            <button type="button" onClick={() => router.push('/sites/list')} className="px-4 py-2 rounded-md border cursor-pointer">
               ← Back to list
             </button>
             <div className="flex gap-3">
@@ -328,7 +331,6 @@ export default function RegisterForm() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full text-center">
             <div className="flex items-center justify-center mb-3">
-              {/* Icono de advertencia amarillo */}
               <svg
                 className="w-10 h-10 text-yellow-500"
                 fill="currentColor"
