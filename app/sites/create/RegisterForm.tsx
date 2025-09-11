@@ -14,10 +14,11 @@ type Form = {
   type_of_ed: 'High Risk' | 'General Population' | 'Both' | '';
   detect_site: string;
 
-  // 🔹 nuevos campos
-  age_from?: string;  // guardamos como string en el estado y convertimos antes de enviar
+  // 🔹 nuevos campos: mantenemos strings en formulario y convertimos antes de enviar
+  age_from?: string;
   age_to?: string;
-  monitor?: boolean | null;
+  // Usamos string union en el formulario (el <select> maneja strings)
+  monitor?: 'any' | 'yes' | 'no';
 
   contact_name_1?: string; email_1?: string; phone_1?: string;
   contact_name_2?: string; email_2?: string; phone_2?: string;
@@ -52,7 +53,7 @@ export default function RegisterForm() {
     // 🔹 nuevos por defecto
     age_from: '',
     age_to: '',
-    monitor: '',
+    monitor: 'any',
   });
 
   const [errors, setErrors] = useState<Record<string,string>>({});
@@ -134,6 +135,7 @@ export default function RegisterForm() {
   const toIntOrNull = (v?: string) =>
     !v || v.trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null;
 
+  // Convierte el select a boolean|null para la BD
   const monitorToDb = (m?: 'any' | 'yes' | 'no'): boolean | null =>
     m === 'any' ? null : m === 'yes';
 
