@@ -160,6 +160,34 @@ export default function AdminCenterEditorB() {
         ],
         muiEditTextFieldProps: { select: true },
       },
+      // ✅ NUEVO: Detect Site como booleano
+      detect_site_bool: {
+        accessorKey: 'detect_site_bool',
+        header: 'Detect Site',
+        size: 60,
+        Cell: ({ cell }) => {
+          const v = cell.getValue();
+          if (v == null) return '—';
+          return (
+            <span
+              className="inline-block px-2 py-0.5 rounded text-xs"
+              style={{
+                background: v ? '#DCFCE7' : '#F3F4F6',
+                color: v ? '#065F46' : '#374151',
+              }}
+            >
+              {v ? 'Yes' : 'No'}
+            </span>
+          );
+        },
+        editVariant: 'select',
+        editSelectOptions: [
+          { value: true as any, label: 'Yes' },
+          { value: false as any, label: 'No' },
+          { value: '' as any, label: '—' }, // null
+        ],
+        muiEditTextFieldProps: { select: true },
+      },
     };
 
     const defs: MRT_ColumnDef<Center>[] = [];
@@ -167,6 +195,9 @@ export default function AdminCenterEditorB() {
     for (const col of schema) {
       const key = col.column_name;
       if (key === 'id' || key === 'created_at') continue;
+
+      // ⛔️ oculta la antigua textual si sigue en la tabla
+      if (key === 'detect_site') continue;
 
       if (special[key]) {
         defs.push(special[key]);
@@ -223,7 +254,7 @@ export default function AdminCenterEditorB() {
       ['country', 4],
       ['zip_code', 5],
       ['type_of_ed', 6],
-      ['detect_site', 7],
+      ['detect_site_bool', 7],
     ]);
     defs.sort((a, b) => {
       const ak = a.accessorKey as string;

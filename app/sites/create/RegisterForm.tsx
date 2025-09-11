@@ -12,12 +12,15 @@ type Form = {
   country: string;
   zip_code: string;
   type_of_ed: 'High Risk' | 'General Population' | 'Both' | '';
-  detect_site: string;
+
+  // ✅ nuevo campo booleano tri-estado en el formulario (como string)
+  detect_site_bool?: 'any' | 'yes' | 'no';
 
   // 🔹 nuevos campos: mantenemos strings en formulario y convertimos antes de enviar
   age_from?: string;
   age_to?: string;
-  // Usamos string union en el formulario (el <select> maneja strings)
+
+  // select tri-estado (any/yes/no) → se convierte a boolean|null al enviar
   monitor?: 'any' | 'yes' | 'no';
 
   contact_name_1?: string; email_1?: string; phone_1?: string;
@@ -49,7 +52,8 @@ export default function RegisterForm() {
     country: '',
     zip_code: '',
     type_of_ed: '',
-    detect_site: '',
+    // ✅ por defecto tri-estado
+    detect_site_bool: 'any',
     // 🔹 nuevos por defecto
     age_from: '',
     age_to: '',
@@ -135,8 +139,8 @@ export default function RegisterForm() {
   const toIntOrNull = (v?: string) =>
     !v || v.trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null;
 
-  // Convierte el select a boolean|null para la BD
-  const monitorToDb = (m?: 'any' | 'yes' | 'no'): boolean | null =>
+  // Tri-estado (any/yes/no) → boolean|null
+  const triToBool = (m?: 'any' | 'yes' | 'no'): boolean | null =>
     m === 'any' ? null : m === 'yes';
 
   const submit = async (e: React.FormEvent) => {
@@ -183,8 +187,10 @@ export default function RegisterForm() {
         // 🔹 conversiones a tipos de BD
         age_from: toIntOrNull(form.age_from),
         age_to: toIntOrNull(form.age_to),
-        monitor: monitorToDb(form.monitor),
+        monitor: triToBool(form.monitor),
+        detect_site_bool: triToBool(form.detect_site_bool),
       };
+
       // limpia strings vacíos
       Object.keys(payload).forEach((k) => {
         if ((payload as any)[k] === '') (payload as any)[k] = null;
@@ -219,10 +225,10 @@ export default function RegisterForm() {
       country: '',
       zip_code: '',
       type_of_ed: '',
-      detect_site: '',
       age_from: '',
       age_to: '',
       monitor: 'any',
+      detect_site_bool: 'any', // ✅
     });
     setErrors({});
     setContactError('');
@@ -265,7 +271,14 @@ export default function RegisterForm() {
                 options={['', 'High Risk', 'General Population', 'Both']}
                 error={errors.type_of_ed}
               />
-              <Input label="Detect Site" value={form.detect_site} onChange={set('detect_site')} />
+
+              {/* ✅ Detect Site (booleano tri-estado) */}
+              <Select
+                label="Detect Site"
+                value={form.detect_site_bool ?? 'any'}
+                onChange={set('detect_site_bool')}
+                options={['any', 'yes', 'no']}
+              />
             </div>
           </fieldset>
 
