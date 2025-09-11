@@ -26,7 +26,7 @@ type Rule = {
   program_url: string | null;   // URL (antes "website")
 
   type_of_ed: 'General population' | 'High risk' | 'Both' | null;
-  notes: string | null;
+  sites: string | null;
 };
 
 const EU_COUNTRIES = [
@@ -163,7 +163,7 @@ export default function ProgramRulesEditor() {
     },
 
     // Notas
-    { accessorKey: 'notes', header: 'Notes', size: 260 },
+    { accessorKey: 'sites', header: 'Sites', size: 260 },
   ], []);
 
   // Crear con valores por defecto razonables
@@ -179,7 +179,7 @@ export default function ProgramRulesEditor() {
         program_key: 'EDENT1FI',
         program_name: 'New program',
         program_url: '',
-        notes: '',
+        sites: '',
         ...template,
       };
 
@@ -318,6 +318,7 @@ export default function ProgramRulesEditor() {
           pagination: { pageSize: 10, pageIndex: 0 },
           columnOrder: [
             'mrt-row-actions',
+            'sites',
             'country',
             'postal_format',
             'rule_pattern',
@@ -327,7 +328,7 @@ export default function ProgramRulesEditor() {
             'program_key',
             'program_name',
             'program_url',
-            'notes',
+            
           ],
         }}
       />
