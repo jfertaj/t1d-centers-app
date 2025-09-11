@@ -1,14 +1,27 @@
+// app/api/program-rules/list/route.ts
 import { NextResponse } from 'next/server';
-import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+// GET /api/program-rules/list?country=...&active=true|false
+export async function GET(req: Request) {
+  const base = process.env.NEXT_PUBLIC_API_BASE;
+  if (!base) {
+    return NextResponse.json({ error: 'NEXT_PUBLIC_API_BASE is not set' }, { status: 500 });
+  }
+
+  const url = new URL(req.url);
+  const qs = url.searchParams.toString();
+  const target = `${base}/program-rules${qs ? `?${qs}` : ''}`;
+
   try {
-    const data = await apiFetch('/program-rules', { method: 'GET' });
-    return NextResponse.json(Array.isArray(data) ? data : data?.rules ?? []);
-  } catch (err: any) {
-    console.error('rules list error:', err);
-    return NextResponse.json({ error: 'Upstream error' }, { status: 502 });
+    const upstream = await fetch(target, { method: 'GET', cache: 'no-store' });
+    const text = await upstream.text();
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = { message: text }; }
+    // La Lambda devuelve array de reglas
+    return NextResponse.json(Array.isArray(data) ? data : [], { status: upstream.status });
+  } catch (e: any) {
+    return NextResponse.json({ error: 'Proxy error', details: String(e?.message || e) }, { status: 500 });
   }
 }
