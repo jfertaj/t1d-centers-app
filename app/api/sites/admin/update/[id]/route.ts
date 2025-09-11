@@ -4,9 +4,22 @@ import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
+function toIntOrNull(v: unknown): number | null {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+function toBoolOrNull(v: unknown): boolean | null {
+  if (v === '' || v === undefined || v === null) return null;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).toLowerCase().trim();
+  if (['true', '1', 'yes', 'on'].includes(s)) return true;
+  if (['false', '0', 'no', 'off'].includes(s)) return false;
+  return null;
+}
+
 export async function PUT(req: Request) {
   try {
-    // Extrae el id del último segmento de la URL
     const url = new URL(req.url);
     const parts = url.pathname.split('/').filter(Boolean);
     const idStr = parts[parts.length - 1];
@@ -27,6 +40,11 @@ export async function PUT(req: Request) {
       zip_code: data.zip_code ?? null,
       type_of_ed: data.type_of_ed ?? null,
       detect_site: data.detect_site ?? null,
+
+      // NUEVO
+      age_from: toIntOrNull(data.age_from),
+      age_to: toIntOrNull(data.age_to),
+      monitor: toBoolOrNull(data.monitor),
 
       contact_name_1: data.contact_name_1 ?? null,
       email_1: data.email_1 ?? null,
@@ -52,23 +70,20 @@ export async function PUT(req: Request) {
       email_6: data.email_6 ?? null,
       phone_6: data.phone_6 ?? null,
 
-      // si tu UI permite editar coords; si no, omítelos
+      // Si algún día editas coords desde el admin
       latitude: data.latitude ?? undefined,
       longitude: data.longitude ?? undefined,
     };
 
-    // Quita claves undefined (para no sobreescribir con undefined)
     for (const [k, v] of Object.entries(payload)) {
       if (v === undefined) delete (payload as any)[k];
     }
 
-    // Proxy a tu API Gateway → PUT /centers/:id
     const upstream = await apiFetch(`/centers/${idNum}`, {
       method: 'PUT',
       body: payload,
     });
 
-    // Devuelve lo que responda el backend
     return NextResponse.json(upstream, { status: 200 });
   } catch (err: any) {
     console.error('❌ Upstream update error:', err);

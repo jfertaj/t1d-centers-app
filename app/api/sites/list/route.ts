@@ -1,4 +1,5 @@
 // app/api/sites/list/route.ts
+// app/api/sites/list/route.ts
 import { NextResponse } from 'next/server';
 import { apiFetch } from '@lib/api';
 
@@ -6,7 +7,9 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
+    // Devuelve los centros con los nuevos campos incluidos
     const data = await apiFetch('/centers', { method: 'GET' });
+    // Tu backend ya devuelve snake_case, así que no transformamos nada aquí.
     return NextResponse.json(Array.isArray(data) ? data : [], { status: 200 });
   } catch (err: any) {
     console.error('❌ list centers proxy error:', err);
@@ -16,7 +19,6 @@ export async function GET() {
     );
   }
 }
-
 
 // // app/api/sites/list/route.ts
 // import { NextResponse } from 'next/server';

@@ -18,4 +18,14 @@ export interface ClinicalCenter {
   latitude: number | null;
   longitude: number | null;
   created_at: string;
+
+  // NUEVO (si hoy no lo vas a usar en la tabla, puede ser opcional)
+  type_of_ed?: string | null;
+
+  // NUEVOS CAMPOS (null = ANY)
+  age_from?: number | null;
+  age_to?: number | null;
+
+  // NUEVO: si el centro ofrece MONITOR
+  monitor?: string | null;
 }

@@ -11,8 +11,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
+import ProgramRulesEditor from './ProgramRulesEditor'; // <<--- NUEVO
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function StatCard({ label, value }: { label: string | number; value: string | number }) {
   return (
     <div className="bg-white shadow rounded-lg p-4 text-center">
       <div className="text-2xl font-bold text-inodia-blue">{value}</div>
@@ -21,13 +22,12 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-// --- Opciones de selects ---
 const TYPE_OF_ED_OPTIONS = [
   { value: 'High Risk', label: 'High Risk' },
   { value: 'General Population', label: 'General Population' },
+  { value: 'Both', label: 'Both'},
 ];
 
-// Lista de países europeos (UE/EEE + UK)
 const EU_COUNTRIES = [
   'Austria','Belgium','Bulgaria','Croatia','Cyprus','Czech Republic','Denmark',
   'Estonia','Finland','France','Germany','Greece','Hungary','Iceland','Ireland',
@@ -45,6 +45,10 @@ type Center = {
   zip_code: string;
   type_of_ed: string | null;
   detect_site: string | null;
+  // NUEVOS
+  age_from: number | null;
+  age_to: number | null;
+  monitor: boolean | null;
 
   contact_name_1: string | null; email_1: string | null; phone_1: string | null;
   contact_name_2: string | null; email_2: string | null; phone_2: string | null;
@@ -57,26 +61,43 @@ type Center = {
   longitude: number | null;
 };
 
+function toIntOrNull(v: unknown): number | null {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
 export default function AdminCenterEditorB() {
+  const [tab, setTab] = useState<'centers' | 'rules'>('centers');        // <<--- NUEVO
   const [data, setData] = useState<Center[]>([]);
   const [loading, setLoading] = useState(true);
   const [centerToDelete, setCenterToDelete] = useState<Center | null>(null);
   const router = useRouter();
 
   useEffect(() => {
+    if (tab !== 'centers') return;
     (async () => {
       try {
         const res = await fetch('/api/sites/list', { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed fetching centers');
         const result = await res.json();
-        setData(result.centers || result);
+        const arr: Center[] = (result.centers || result || []) as Center[];
+        // asegúrate de que los nuevos campos existan
+        setData(
+          arr.map((c) => ({
+            ...c,
+            age_from: c.age_from ?? null,
+            age_to: c.age_to ?? null,
+            monitor: (c.monitor as any) ?? null,
+          }))
+        );
       } catch {
         toast.error('❌ Failed to load centers');
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [tab]);
 
   const stats = useMemo(() => {
     const totalCenters = data.length;
@@ -104,6 +125,12 @@ export default function AdminCenterEditorB() {
   }) => {
     try {
       const payload: Record<string, unknown> = { ...values };
+
+      // normaliza numéricos/boolean
+      if ('age_from' in payload) payload.age_from = toIntOrNull(payload.age_from as any);
+      if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
+      if ('monitor' in payload && payload.monitor === '') payload.monitor = null;
+
       delete payload.id;
       Object.keys(payload).forEach((k) => {
         // @ts-ignore
@@ -144,7 +171,6 @@ export default function AdminCenterEditorB() {
     }
   };
 
-  // Columnas con selects en edición
   const columns = useMemo<MRT_ColumnDef<Center>[]>(() => [
     { accessorKey: 'name', header: 'Center Name',
       muiEditTextFieldProps: { required: true } },
@@ -159,10 +185,7 @@ export default function AdminCenterEditorB() {
       size: 60,
       editVariant: 'select',
       editSelectOptions: EU_COUNTRIES,
-      muiEditTextFieldProps: {
-        select: true,
-        required: true,
-      },
+      muiEditTextFieldProps: { select: true, required: true },
     },
     { accessorKey: 'zip_code', header: 'ZIP', size: 80,
       muiEditTextFieldProps: { required: true } },
@@ -175,6 +198,33 @@ export default function AdminCenterEditorB() {
       muiEditTextFieldProps: { select: true },
     },
     { accessorKey: 'detect_site', header: 'Detect Site' },
+
+    // NUEVOS: edad y monitor
+    { accessorKey: 'age_from', header: 'Age From', size: 60,
+      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
+    { accessorKey: 'age_to', header: 'Age To', size: 60,
+      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
+    {
+      accessorKey: 'monitor',
+      header: 'Monitor',
+      size: 60,
+      Cell: ({ cell }) => (
+        <span className="inline-block px-2 py-0.5 rounded text-xs"
+          style={{
+            background: cell.getValue() ? '#DCFCE7' : '#F3F4F6',
+            color: cell.getValue() ? '#065F46' : '#374151'
+          }}>
+          {cell.getValue() ? 'Yes' : 'No'}
+        </span>
+      ),
+      muiEditTextFieldProps: { select: true },
+      editVariant: 'select',
+      editSelectOptions: [
+        { value: true as any, label: 'Yes' },
+        { value: false as any, label: 'No' },
+        { value: '' as any, label: '—' }, // para null
+      ],
+    },
 
     // Contacto principal
     { accessorKey: 'contact_name_1', header: 'Primary Contact' },
@@ -214,7 +264,6 @@ export default function AdminCenterEditorB() {
     { accessorKey: 'phone_6', header: 'Phone 6', enableHiding: true,
       muiEditTextFieldProps: { inputMode: 'tel' } },
 
-    // Coords ocultas
     { accessorKey: 'latitude', header: 'Lat', enableHiding: true },
     { accessorKey: 'longitude', header: 'Lng', enableHiding: true },
   ], []);
@@ -225,93 +274,103 @@ export default function AdminCenterEditorB() {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-4">
             <img src="/innodia_cristal.png" alt="INNODIA Logo" className="w-10 h-10" />
-            <h1 className="text-2xl font-bold text-inodia-blue">
-              Admin Clinical Centers Editor
-            </h1>
+            <h1 className="text-2xl font-bold text-inodia-blue">Admin</h1>
           </div>
-          <button
-            onClick={() => router.push('/sites/create')}
-            className="px-4 py-2 bg-inodia-blue text-white rounded-md hover:bg-blue-700"
-          >
-            Register New Center
-          </button>
+          <div className="flex gap-2">
+            <button
+              className={`px-4 py-2 rounded-md ${tab === 'centers' ? 'bg-inodia-blue text-white' : 'bg-gray-100'}`}
+              onClick={() => setTab('centers')}
+            >
+              Clinical Centers
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md ${tab === 'rules' ? 'bg-inodia-blue text-white' : 'bg-gray-100'}`}
+              onClick={() => setTab('rules')}
+            >
+              Program Rules
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <StatCard label="Total Centers" value={stats.totalCenters} />
-          <StatCard label="Countries" value={stats.uniqueCountries} />
-          <StatCard label="Total Contacts" value={stats.totalContacts} />
-        </div>
-
-        {!loading && data.length === 0 && (
-          <div className="text-center text-gray-500 mb-4">
-            No centers found — try “Register New Center”.
-          </div>
-        )}
-
-        <MaterialReactTable
-          columns={columns}
-          data={data}
-          state={{ isLoading: loading }}
-          enableColumnOrdering
-          enableColumnFilters
-          enableDensityToggle
-          enableFullScreenToggle
-          enableHiding
-          enableRowActions
-          renderRowActions={({
-            row,
-            table,
-          }: {
-            row: MRT_Row<Center>;
-            table: MRT_TableInstance<Center>;
-          }) => (
-            <div className="flex gap-2">
-              <button
-                onClick={() => table.setEditingRow(row)}
-                className="px-2 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => setCenterToDelete(row.original)}
-                className="px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300"
-              >
-                Delete
-              </button>
+        {tab === 'centers' ? (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <StatCard label="Total Centers" value={stats.totalCenters} />
+              <StatCard label="Countries" value={stats.uniqueCountries} />
+              <StatCard label="Total Contacts" value={stats.totalContacts} />
             </div>
-          )}
-          enableEditing
-          editDisplayMode="modal"
-          onEditingRowSave={handleSaveRow}
-          initialState={{
-            pagination: { pageSize: 10, pageIndex: 0 },
-            columnVisibility: {
-              contact_name_2: false, email_2: false, phone_2: false,
-              contact_name_3: false, email_3: false, phone_3: false,
-              contact_name_4: false, email_4: false, phone_4: false,
-              contact_name_5: false, email_5: false, phone_5: false,
-              contact_name_6: false, email_6: false, phone_6: false,
-              latitude: true, longitude: true,
-            },
-          }}
-          muiTableContainerProps={{ className: 'rounded-lg border border-gray-200' }}
-          muiTableHeadCellProps={{ className: 'bg-gray-100 font-semibold text-sm text-gray-700' }}
-          muiTableBodyCellProps={{ className: 'text-sm' }}
-          paginationDisplayMode="pages"
-          muiPaginationProps={{
-            rowsPerPageOptions: [5, 10, 20, 50],
-          }}
-        />
 
-        <ConfirmModal
-          isOpen={!!centerToDelete}
-          title="Confirm Deletion"
-          message="Are you sure you want to delete"
-          highlight={centerToDelete?.name}
-          onCancel={() => setCenterToDelete(null)}
-          onConfirm={confirmDelete}
-        />
+            {!loading && data.length === 0 && (
+              <div className="text-center text-gray-500 mb-4">
+                No centers found — try “Register New Center”.
+              </div>
+            )}
+
+            <MaterialReactTable
+              columns={columns}
+              data={data}
+              state={{ isLoading: loading }}
+              enableColumnOrdering
+              enableColumnFilters
+              enableDensityToggle
+              enableFullScreenToggle
+              enableHiding
+              enableRowActions
+              renderRowActions={({
+                row,
+                table,
+              }: {
+                row: MRT_Row<Center>;
+                table: MRT_TableInstance<Center>;
+              }) => (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => table.setEditingRow(row)}
+                    className="px-2 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setCenterToDelete(row.original)}
+                    className="px-2 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+              enableEditing
+              editDisplayMode="modal"
+              onEditingRowSave={handleSaveRow}
+              initialState={{
+                pagination: { pageSize: 10, pageIndex: 0 },
+                columnVisibility: {
+                  contact_name_2: false, email_2: false, phone_2: false,
+                  contact_name_3: false, email_3: false, phone_3: false,
+                  contact_name_4: false, email_4: false, phone_4: false,
+                  contact_name_5: false, email_5: false, phone_5: false,
+                  contact_name_6: false, email_6: false, phone_6: false,
+                  latitude: true, longitude: true,
+                },
+              }}
+              muiTableContainerProps={{ className: 'rounded-lg border border-gray-200' }}
+              muiTableHeadCellProps={{ className: 'bg-gray-100 font-semibold text-sm text-gray-700' }}
+              muiTableBodyCellProps={{ className: 'text-sm' }}
+              paginationDisplayMode="pages"
+              muiPaginationProps={{ rowsPerPageOptions: [5, 10, 20, 50] }}
+            />
+
+            <ConfirmModal
+              isOpen={!!centerToDelete}
+              title="Confirm Deletion"
+              message="Are you sure you want to delete"
+              highlight={centerToDelete?.name}
+              onCancel={() => setCenterToDelete(null)}
+              onConfirm={confirmDelete}
+            />
+          </>
+        ) : (
+          <ProgramRulesEditor />   // <<--- NUEVO PANEL
+        )}
       </div>
     </div>
   );
