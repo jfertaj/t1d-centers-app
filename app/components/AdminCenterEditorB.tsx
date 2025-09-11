@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import ProgramRulesEditor from './ProgramRulesEditor';
 import AddColumnModal from './AddColumnModal';
+import Link from 'next/link';
 
 function StatCard({ label, value }: { label: string | number; value: string | number }) {
   return (
@@ -486,6 +487,21 @@ export default function AdminCenterEditorB() {
               table="clinical_centers"
               onSuccess={refreshAll}
             />
+            {tab === 'centers' && (
+            <Link
+              href="/sites/create"
+              aria-label="Register new clinical center"
+              title="Register new clinical center"
+              className="fixed right-5 bottom-5 md:right-8 md:bottom-8 z-50"
+            >
+              <span className="flex items-center gap-2 rounded-full shadow-lg bg-inodia-blue text-white px-5 py-3 hover:bg-blue-700 transition">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                <span className="hidden sm:inline text-sm font-medium">New Center</span>
+              </span>
+            </Link>
+          )}
           </>
         ) : (
           <ProgramRulesEditor />

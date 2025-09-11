@@ -14,13 +14,19 @@ import ConfirmModal from './ConfirmModal';
 type Rule = {
   id: number;
   country: string;
-  postal_pattern: string | null; // e.g., "40***", "1000-4050", "20***-29***;38***"
+
+  postal_format: string | null; // p. ej. "NNNNN", "XX-XXX", "N/A"
+  rule_pattern: string | null;  // p. ej. "40000-40999", "20***-29***;38***", "*"
+
   age_from: number | null;
   age_to: number | null;
-  program_name: string;
-  website: string | null;
+
+  program_key: string;          // p. ej. "EDENT1FI" | "DiaUnion"
+  program_name: string;         // nombre legible
+  program_url: string | null;   // URL (antes "website")
+
+  type_of_ed: 'General population' | 'High risk' | 'Both' | null;
   notes: string | null;
-  type_of_ed: 'General Population' | 'High Risk' | 'Both' | null;
 };
 
 const EU_COUNTRIES = [
@@ -31,9 +37,10 @@ const EU_COUNTRIES = [
   'Switzerland','United Kingdom',
 ].map((c) => ({ value: c, label: c }));
 
+// Usa las etiquetas exactamente como están en tu BD (según captura).
 const TYPE_OF_ED_OPTIONS = [
-  { value: 'General Population', label: 'General Population' },
-  { value: 'High Risk', label: 'High Risk' },
+  { value: 'General population', label: 'General population' },
+  { value: 'High risk', label: 'High risk' },
   { value: 'Both', label: 'Both' },
 ];
 
@@ -65,64 +72,134 @@ export default function ProgramRulesEditor() {
   useEffect(() => { load(); }, []);
 
   const columns = useMemo<MRT_ColumnDef<Rule>[]>(() => [
+    // País
     {
       accessorKey: 'country',
       header: 'Country',
+      size: 150,
       editVariant: 'select',
       editSelectOptions: EU_COUNTRIES,
       muiEditTextFieldProps: { select: true, required: true },
     },
+
+    // Formato postal y patrón de regla (ambos existen en tu tabla)
     {
-      accessorKey: 'postal_pattern',
+      accessorKey: 'postal_format',
+      header: 'Postal Format',
+      size: 140,
+      muiEditTextFieldProps: {
+        placeholder: 'e.g., NNNNN / XX-XXX / NNNN / N/A',
+      },
+    },
+    {
+      accessorKey: 'rule_pattern',
       header: 'Postal Pattern',
       size: 220,
       muiEditTextFieldProps: {
-        placeholder: 'e.g., 40*** or 1000-4050 or 20***-29***;38***',
+        placeholder: 'e.g., 40000-40999 or 20***-29***;38*** or *',
       },
     },
-    { accessorKey: 'age_from', header: 'Age From', size: 70,
-      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
-    { accessorKey: 'age_to', header: 'Age To', size: 70,
-      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
+
+    // Rango de edad
+    {
+      accessorKey: 'age_from',
+      header: 'Age From',
+      size: 80,
+      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } },
+    },
+    {
+      accessorKey: 'age_to',
+      header: 'Age To',
+      size: 80,
+      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } },
+    },
+
+    // Tipo de ED
     {
       accessorKey: 'type_of_ed',
       header: 'Type of ED',
+      size: 160,
       editVariant: 'select',
       editSelectOptions: TYPE_OF_ED_OPTIONS,
       muiEditTextFieldProps: { select: true },
     },
-    { accessorKey: 'program_name', header: 'Program', size: 160,
-      muiEditTextFieldProps: { required: true } },
-    { accessorKey: 'website', header: 'Website', size: 220 },
-    { accessorKey: 'notes', header: 'Notes', size: 240 },
+
+    // Programa
+    {
+      accessorKey: 'program_key',
+      header: 'Program Key',
+      size: 120,
+      muiEditTextFieldProps: { placeholder: 'e.g., EDENT1FI, DiaUnion' },
+    },
+    {
+      accessorKey: 'program_name',
+      header: 'Program',
+      size: 180,
+      muiEditTextFieldProps: { required: true },
+    },
+    {
+      accessorKey: 'program_url',
+      header: 'Website',
+      size: 260,
+      Cell: ({ cell }) => {
+        const url = cell.getValue<string | null>();
+        if (!url) return null;
+        try {
+          const u = new URL(url);
+          return (
+            <a
+              href={u.toString()}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              {u.hostname}
+            </a>
+          );
+        } catch {
+          return url;
+        }
+      },
+    },
+
+    // Notas
+    { accessorKey: 'notes', header: 'Notes', size: 260 },
   ], []);
 
+  // Crear con valores por defecto razonables
   const handleCreate = async (template?: Partial<Rule>) => {
     try {
       const draft: Partial<Rule> = {
         country: 'Germany',
-        postal_pattern: '',
+        postal_format: 'NNNNN',
+        rule_pattern: '*',
         age_from: null,
         age_to: null,
-        type_of_ed: 'General Population',
+        type_of_ed: 'General population',
+        program_key: 'EDENT1FI',
         program_name: 'New program',
-        website: '',
+        program_url: '',
         notes: '',
         ...template,
       };
 
-      const payload = {
+      const payload: Record<string, any> = {
         ...draft,
         age_from: toIntOrNull(draft.age_from as any),
         age_to: toIntOrNull(draft.age_to as any),
       };
+
+      // Limpia strings vacíos a null
+      Object.keys(payload).forEach((k) => {
+        if (payload[k] === '') payload[k] = null;
+      });
 
       const res = await fetch('/api/program-rules/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new Error(await res.text().catch(() => 'Create failed'));
       const created = await res.json();
       const rule: Rule = created.rule || created;
       setRules((prev) => [rule, ...prev]);
@@ -133,6 +210,7 @@ export default function ProgramRulesEditor() {
     }
   };
 
+  // Guardar edición (PUT solo con campos editados)
   const handleSaveRow = async ({
     exitEditingMode,
     row,
@@ -144,9 +222,15 @@ export default function ProgramRulesEditor() {
   }) => {
     try {
       const payload: Record<string, unknown> = { ...values };
+
       if ('age_from' in payload) payload.age_from = toIntOrNull(payload.age_from as any);
       if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
+
+      // limpia vacíos -> null, y quita id
       delete (payload as any).id;
+      Object.keys(payload).forEach((k) => {
+        if (payload[k as keyof typeof payload] === '') payload[k as keyof typeof payload] = null;
+      });
 
       const res = await fetch(`/api/program-rules/${row.original.id}`, {
         method: 'PUT',
@@ -230,7 +314,22 @@ export default function ProgramRulesEditor() {
         enableEditing
         editDisplayMode="modal"
         onEditingRowSave={handleSaveRow}
-        initialState={{ pagination: { pageSize: 10, pageIndex: 0 } }}
+        initialState={{
+          pagination: { pageSize: 10, pageIndex: 0 },
+          columnOrder: [
+            'mrt-row-actions',
+            'country',
+            'postal_format',
+            'rule_pattern',
+            'age_from',
+            'age_to',
+            'type_of_ed',
+            'program_key',
+            'program_name',
+            'program_url',
+            'notes',
+          ],
+        }}
       />
 
       <ConfirmModal
