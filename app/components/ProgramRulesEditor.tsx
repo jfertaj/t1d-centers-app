@@ -1,3 +1,4 @@
+// app/components/ProgramRulesEditor.tsx
 'use client';
 
 import {
@@ -13,13 +14,13 @@ import ConfirmModal from './ConfirmModal';
 type Rule = {
   id: number;
   country: string;
-  postal_pattern: string | null; // ej: "1000-4050", "40***", regex, etc.
+  postal_pattern: string | null; // e.g., "40***", "1000-4050", "20***-29***;38***"
   age_from: number | null;
   age_to: number | null;
   program_name: string;
   website: string | null;
   notes: string | null;
-  type_of_ed: string | null; // "General Population" | "High Risk"
+  type_of_ed: 'General Population' | 'High Risk' | 'Both' | null;
 };
 
 const EU_COUNTRIES = [
@@ -27,41 +28,41 @@ const EU_COUNTRIES = [
   'Estonia','Finland','France','Germany','Greece','Hungary','Iceland','Ireland',
   'Italy','Latvia','Liechtenstein','Lithuania','Luxembourg','Malta','Netherlands',
   'Norway','Poland','Portugal','Romania','Slovakia','Slovenia','Spain','Sweden',
-  'Switzerland','United Kingdom'
+  'Switzerland','United Kingdom',
 ].map((c) => ({ value: c, label: c }));
 
 const TYPE_OF_ED_OPTIONS = [
   { value: 'General Population', label: 'General Population' },
   { value: 'High Risk', label: 'High Risk' },
-  { value: 'Both', label: 'Both'},
+  { value: 'Both', label: 'Both' },
 ];
 
-function toIntOrNull(v: unknown): number | null {
+const toIntOrNull = (v: unknown): number | null => {
   if (v === '' || v === undefined || v === null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
-}
+};
 
 export default function ProgramRulesEditor() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [toDelete, setToDelete] = useState<Rule | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/program-rules/list', { cache: 'no-store' });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        setRules(Array.isArray(data) ? data : (data.rules || []));
-      } catch (e) {
-        console.error(e);
-        toast.error('Failed loading rules');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/program-rules/list', { cache: 'no-store' });
+      const data = await res.json();
+      setRules(Array.isArray(data) ? data : (data.rules || []));
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed loading rules');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
 
   const columns = useMemo<MRT_ColumnDef<Rule>[]>(() => [
     {
@@ -71,11 +72,17 @@ export default function ProgramRulesEditor() {
       editSelectOptions: EU_COUNTRIES,
       muiEditTextFieldProps: { select: true, required: true },
     },
-    { accessorKey: 'postal_pattern', header: 'Postal Pattern', size: 200,
-      muiEditTextFieldProps: { placeholder: 'e.g., 40*** or 1000-4050' } },
-    { accessorKey: 'age_from', header: 'Age From', size: 60,
+    {
+      accessorKey: 'postal_pattern',
+      header: 'Postal Pattern',
+      size: 220,
+      muiEditTextFieldProps: {
+        placeholder: 'e.g., 40*** or 1000-4050 or 20***-29***;38***',
+      },
+    },
+    { accessorKey: 'age_from', header: 'Age From', size: 70,
       muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
-    { accessorKey: 'age_to', header: 'Age To', size: 60,
+    { accessorKey: 'age_to', header: 'Age To', size: 70,
       muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
     {
       accessorKey: 'type_of_ed',
@@ -86,15 +93,29 @@ export default function ProgramRulesEditor() {
     },
     { accessorKey: 'program_name', header: 'Program', size: 160,
       muiEditTextFieldProps: { required: true } },
-    { accessorKey: 'website', header: 'Website', size: 200 },
-    { accessorKey: 'notes', header: 'Notes', size: 200 },
+    { accessorKey: 'website', header: 'Website', size: 220 },
+    { accessorKey: 'notes', header: 'Notes', size: 240 },
   ], []);
 
-  const handleCreate = async (values: Partial<Rule>) => {
+  const handleCreate = async (template?: Partial<Rule>) => {
     try {
-      const payload = { ...values };
-      payload.age_from = toIntOrNull(payload.age_from as any);
-      payload.age_to = toIntOrNull(payload.age_to as any);
+      const draft: Partial<Rule> = {
+        country: 'Germany',
+        postal_pattern: '',
+        age_from: null,
+        age_to: null,
+        type_of_ed: 'General Population',
+        program_name: 'New program',
+        website: '',
+        notes: '',
+        ...template,
+      };
+
+      const payload = {
+        ...draft,
+        age_from: toIntOrNull(draft.age_from as any),
+        age_to: toIntOrNull(draft.age_to as any),
+      };
 
       const res = await fetch('/api/program-rules/create', {
         method: 'POST',
@@ -127,14 +148,17 @@ export default function ProgramRulesEditor() {
       if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
       delete (payload as any).id;
 
-      const res = await fetch(`/api/program-rules/admin/update/${row.original.id}`, {
+      const res = await fetch(`/api/program-rules/${row.original.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
+
       toast.success('Updated');
-      setRules((prev) => prev.map((r) => r.id === row.original.id ? { ...r, ...values } as Rule : r));
+      setRules((prev) =>
+        prev.map((r) => (r.id === row.original.id ? ({ ...r, ...values } as Rule) : r))
+      );
       exitEditingMode();
     } catch (e) {
       console.error(e);
@@ -145,7 +169,7 @@ export default function ProgramRulesEditor() {
   const confirmDelete = async () => {
     if (!toDelete) return;
     try {
-      const res = await fetch(`/api/program-rules/admin/delete/${toDelete.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/program-rules/${toDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       setRules((prev) => prev.filter((r) => r.id !== toDelete.id));
       toast.success('Deleted');
@@ -159,10 +183,16 @@ export default function ProgramRulesEditor() {
 
   return (
     <div>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <p className="text-gray-600">
           Manage geographic/age rules to redirect users to programs (EDENT1FI, DiaUnion, etc.).
         </p>
+        <button
+          onClick={() => handleCreate()}
+          className="px-3 py-2 bg-inodia-blue text-white rounded hover:bg-blue-700"
+        >
+          ➕ New Rule
+        </button>
       </div>
 
       <MaterialReactTable
@@ -175,25 +205,6 @@ export default function ProgramRulesEditor() {
         enableFullScreenToggle
         enableHiding
         enableRowActions
-        renderTopToolbarCustomActions={() => (
-          <button
-            onClick={() =>
-              handleCreate({
-                country: 'Germany',
-                postal_pattern: null,
-                age_from: null,
-                age_to: null,
-                program_name: 'New program',
-                website: '',
-                notes: '',
-                type_of_ed: 'General Population',
-              })
-            }
-            className="px-3 py-2 bg-inodia-blue text-white rounded hover:bg-blue-700"
-          >
-            ➕ New Rule
-          </button>
-        )}
         renderRowActions={({
           row,
           table,
@@ -219,9 +230,7 @@ export default function ProgramRulesEditor() {
         enableEditing
         editDisplayMode="modal"
         onEditingRowSave={handleSaveRow}
-        initialState={{
-          pagination: { pageSize: 10, pageIndex: 0 },
-        }}
+        initialState={{ pagination: { pageSize: 10, pageIndex: 0 } }}
       />
 
       <ConfirmModal

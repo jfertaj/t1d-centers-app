@@ -1,3 +1,4 @@
+// app/sites/create/RegisterForm.tsx
 'use client';
 
 import React, { useRef, useState, forwardRef } from 'react';
@@ -12,6 +13,11 @@ type Form = {
   zip_code: string;
   type_of_ed: 'High Risk' | 'General Population' | 'Both' | '';
   detect_site: string;
+
+  // 🔹 nuevos campos
+  age_from?: string;  // guardamos como string en el estado y convertimos antes de enviar
+  age_to?: string;
+  monitor?: boolean | null;
 
   contact_name_1?: string; email_1?: string; phone_1?: string;
   contact_name_2?: string; email_2?: string; phone_2?: string;
@@ -43,22 +49,23 @@ export default function RegisterForm() {
     zip_code: '',
     type_of_ed: '',
     detect_site: '',
+    // 🔹 nuevos por defecto
+    age_from: '',
+    age_to: '',
+    monitor: '',
   });
 
   const [errors, setErrors] = useState<Record<string,string>>({});
   const [contactError, setContactError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // —— UI: contactos opcionales
   const [showOptional, setShowOptional] = useState(false);
-  const [additionalCount, setAdditionalCount] = useState(0); // 0..5 → Contact 2..6
+  const [additionalCount, setAdditionalCount] = useState(0);
 
-  // —— Modal bloqueo geocodificación
   const [geoModalOpen, setGeoModalOpen] = useState(false);
   const [geoModalText, setGeoModalText] = useState('Address could not be geolocated. Please review and try again.');
   const [geoCandidate, setGeoCandidate] = useState<string | null>(null);
 
-  // —— refs para llevar al usuario al campo Address al cerrar modal
   const addressRef = useRef<HTMLInputElement>(null);
   const cityRef = useRef<HTMLInputElement>(null);
   const zipRef = useRef<HTMLInputElement>(null);
@@ -67,9 +74,7 @@ export default function RegisterForm() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.value as any }));
 
-  // ——————————————————————————
-  // Geocodificación previa contra Lambda/API Gateway
-  // ——————————————————————————
+  // —————————— Geocodificación previa ——————————
   async function precheckGeocoding(): Promise<boolean> {
     if (!API_BASE) {
       toast.error('API base URL is not configured (NEXT_PUBLIC_API_BASE).');
@@ -99,7 +104,6 @@ export default function RegisterForm() {
       }
 
       if (!data.ok) {
-        // bloqueamos tanto en NO_RESULTS como en partial === true
         setGeoCandidate(data.formatted_address ?? null);
         setGeoModalText(
           data.partial
@@ -110,7 +114,6 @@ export default function RegisterForm() {
         return false;
       }
 
-      // ok === true → continuar
       return true;
     } catch {
       setGeoCandidate(null);
@@ -120,7 +123,6 @@ export default function RegisterForm() {
     }
   }
 
-  // helper: contacto válido si al menos 2 de 3 campos están rellenados
   const isContactValid = (name?: string, email?: string, phone?: string) => {
     let count = 0;
     if (name && name.trim()) count++;
@@ -129,20 +131,25 @@ export default function RegisterForm() {
     return count >= 2;
   };
 
+  const toIntOrNull = (v?: string) =>
+    !v || v.trim() === '' ? null : Number.isFinite(Number(v)) ? Number(v) : null;
+
+  const monitorToDb = (m?: 'any' | 'yes' | 'no'): boolean | null =>
+    m === 'any' ? null : m === 'yes';
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submitting) return;
 
     const newErrors: Record<string,string> = {};
-    if (!form.name.trim()) newErrors.name = 'Center name is required';
-    if (!form.address.trim()) newErrors.address = 'Address is required';
-    if (!form.city.trim()) newErrors.city = 'City is required';
-    if (!form.country.trim()) newErrors.country = 'Country is required';
-    if (!form.zip_code.trim()) newErrors.zip_code = 'ZIP code is required';
-    if (!form.type_of_ed.trim()) newErrors.type_of_ed = 'Type of ED is required';
+    if (!form.name?.trim()) newErrors.name = 'Center name is required';
+    if (!form.address?.trim()) newErrors.address = 'Address is required';
+    if (!form.city?.trim()) newErrors.city = 'City is required';
+    if (!form.country?.trim()) newErrors.country = 'Country is required';
+    if (!form.zip_code?.trim()) newErrors.zip_code = 'ZIP code is required';
+    if (!form.type_of_ed?.trim()) newErrors.type_of_ed = 'Type of ED is required';
     setErrors(newErrors);
 
-    // validar contactos (al menos 1 válido: 2 de 3 campos rellenados)
     const hasOneValidContact =
       isContactValid(form.contact_name_1, form.email_1, form.phone_1) ||
       isContactValid(form.contact_name_2, form.email_2, form.phone_2) ||
@@ -157,11 +164,8 @@ export default function RegisterForm() {
       setContactError('');
     }
 
-    if (Object.keys(newErrors).length > 0 || !hasOneValidContact) {
-      return;
-    }
+    if (Object.keys(newErrors).length > 0 || !hasOneValidContact) return;
 
-    // Geocodificación previa (bloqueante si falla/partial)
     const geoOk = await precheckGeocoding();
     if (!geoOk) return;
 
@@ -172,7 +176,14 @@ export default function RegisterForm() {
 
     setSubmitting(true);
     try {
-      const payload: Record<string, any> = { ...form };
+      const payload: Record<string, any> = {
+        ...form,
+        // 🔹 conversiones a tipos de BD
+        age_from: toIntOrNull(form.age_from),
+        age_to: toIntOrNull(form.age_to),
+        monitor: monitorToDb(form.monitor),
+      };
+      // limpia strings vacíos
       Object.keys(payload).forEach((k) => {
         if ((payload as any)[k] === '') (payload as any)[k] = null;
       });
@@ -189,7 +200,6 @@ export default function RegisterForm() {
       }
 
       toast.success(`✅ Center "${form.name}" registered`);
-      // ⬇️ redirige a la lista pública (autorizada para todos los autenticados)
       router.push('/sites/list');
     } catch (err) {
       console.error(err);
@@ -208,6 +218,9 @@ export default function RegisterForm() {
       zip_code: '',
       type_of_ed: '',
       detect_site: '',
+      age_from: '',
+      age_to: '',
+      monitor: 'any',
     });
     setErrors({});
     setContactError('');
@@ -216,7 +229,7 @@ export default function RegisterForm() {
   };
 
   const addAnotherContact = () => {
-    if (additionalCount < 5) setAdditionalCount(additionalCount + 1); // hasta contact_6
+    if (additionalCount < 5) setAdditionalCount(additionalCount + 1);
   };
 
   return (
@@ -254,7 +267,22 @@ export default function RegisterForm() {
             </div>
           </fieldset>
 
-          {/* Primary contact (siempre visible) */}
+          {/* 🔹 Eligibilidad */}
+          <fieldset className="border border-gray-200 rounded-lg p-4">
+            <legend className="px-2 text-sm font-semibold text-gray-700">Eligibility</legend>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input label="Age From" type="number" min={0} value={form.age_from ?? ''} onChange={set('age_from')} />
+              <Input label="Age To"   type="number" min={0} value={form.age_to ?? ''}   onChange={set('age_to')} />
+              <Select
+                label="Monitor"
+                value={form.monitor ?? 'any'}
+                onChange={set('monitor')}
+                options={['any', 'yes', 'no']}
+              />
+            </div>
+          </fieldset>
+
+          {/* Primary contact */}
           <fieldset className="border border-gray-200 rounded-lg p-4">
             <legend className="px-2 text-sm font-semibold text-gray-700">
               Primary Contact (any two of: Name, Email, Phone)
@@ -266,7 +294,7 @@ export default function RegisterForm() {
             </div>
           </fieldset>
 
-          {/* Toggle para contactos opcionales */}
+          {/* Toggle + adicionales */}
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -287,14 +315,13 @@ export default function RegisterForm() {
             )}
           </div>
 
-          {/* Contactos 2..(1+additionalCount) dentro del colapsable */}
           {showOptional && (
             <div className="space-y-4">
               {Array.from({ length: additionalCount }, (_, i) => 2 + i).map((n) => (
                 <fieldset key={n} className="border border-gray-200 rounded-lg p-4">
                   <legend className="px-2 text-sm font-semibold text-gray-700">Contact {n} (optional)</legend>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Input label="Name" value={(form as any)[`contact_name_${n}`] ?? ''} onChange={set(`contact_name_${n}` as any)} />
+                    <Input label="Name"  value={(form as any)[`contact_name_${n}`] ?? ''} onChange={set(`contact_name_${n}` as any)} />
                     <Input label="Email" type="email" value={(form as any)[`email_${n}`] ?? ''} onChange={set(`email_${n}` as any)} />
                     <Input label="Phone" value={(form as any)[`phone_${n}`] ?? ''} onChange={set(`phone_${n}` as any)} />
                   </div>
@@ -306,7 +333,6 @@ export default function RegisterForm() {
           {contactError && <p className="text-sm text-red-600">{contactError}</p>}
 
           <div className="flex justify-between">
-            {/* ⬇️ lleva a la lista accesible */}
             <button type="button" onClick={() => router.push('/sites/list')} className="px-4 py-2 rounded-md border cursor-pointer">
               ← Back to list
             </button>
@@ -314,11 +340,7 @@ export default function RegisterForm() {
               <button type="button" onClick={reset} className="px-4 py-2 rounded-md border cursor-pointer">
                 Reset
               </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 bg-inodia-blue text-white rounded-md disabled:opacity-60 cursor-pointer"
-              >
+              <button type="submit" disabled={submitting} className="px-4 py-2 bg-inodia-blue text-white rounded-md disabled:opacity-60 cursor-pointer">
                 {submitting ? 'Saving…' : 'Register'}
               </button>
             </div>
@@ -326,26 +348,16 @@ export default function RegisterForm() {
         </form>
       </div>
 
-      {/* Modal bloqueo geocodificación */}
+      {/* Modal geocoding */}
       {geoModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full text-center">
             <div className="flex items-center justify-center mb-3">
-              <svg
-                className="w-10 h-10 text-yellow-500"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.721-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.742 2.987H3.48c-1.53 0-2.492-1.653-1.742-2.987l6.519-11.59zM11 14a1 1 0 11-2 0 1 1 0 012 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z"
-                  clipRule="evenodd"
-                />
+              <svg className="w-10 h-10 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.721-1.36 3.486 0l6.518 11.59c.75 1.334-.213 2.987-1.742 2.987H3.48c-1.53 0-2.492-1.653-1.742-2.987l6.519-11.59zM11 14a1 1 0 11-2 0 1 1 0 012 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z" clipRule="evenodd"/>
               </svg>
             </div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">
-              Address could not be geolocated
-            </h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">Address could not be geolocated</h2>
             <p className="text-sm text-gray-700">{geoModalText}</p>
             {geoCandidate && (
               <p className="text-sm text-gray-700 mt-2">

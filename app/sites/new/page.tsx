@@ -33,7 +33,7 @@ export default function NewSitePage() {
     zip_code: '',
     age_from: '',
     age_to: '',
-    monitor: 'any',
+    monitor: '',
 
     contact_name_1: '', email_1: '', phone_1: '',
     contact_name_2: '', email_2: '', phone_2: '',
@@ -58,7 +58,7 @@ export default function NewSitePage() {
     s === '' ? null : Number.isFinite(Number(s)) ? Number(s) : null;
 
   const mapMonitor = (v: FormState['monitor']): boolean | null =>
-    v === 'any' ? null : v === 'yes';
+    v === 'no' ? null : v === 'yes';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

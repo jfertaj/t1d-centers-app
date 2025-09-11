@@ -7,11 +7,11 @@ import {
   type MRT_Row,
   type MRT_TableInstance,
 } from 'material-react-table';
-import { useMemo, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
-import ProgramRulesEditor from './ProgramRulesEditor'; // <<--- NUEVO
+import ProgramRulesEditor from './ProgramRulesEditor';
+import AddColumnModal from './AddColumnModal';
 
 function StatCard({ label, value }: { label: string | number; value: string | number }) {
   return (
@@ -25,7 +25,7 @@ function StatCard({ label, value }: { label: string | number; value: string | nu
 const TYPE_OF_ED_OPTIONS = [
   { value: 'High Risk', label: 'High Risk' },
   { value: 'General Population', label: 'General Population' },
-  { value: 'Both', label: 'Both'},
+  { value: 'Both', label: 'Both' },
 ];
 
 const EU_COUNTRIES = [
@@ -36,69 +36,241 @@ const EU_COUNTRIES = [
   'Switzerland','United Kingdom'
 ].map((c) => ({ value: c, label: c }));
 
-type Center = {
-  id: number;
-  name: string;
-  address: string;
-  city: string;
-  country: string;
-  zip_code: string;
-  type_of_ed: string | null;
-  detect_site: string | null;
-  // NUEVOS
-  age_from: number | null;
-  age_to: number | null;
-  monitor: boolean | null;
+type Center = Record<string, any>;
 
-  contact_name_1: string | null; email_1: string | null; phone_1: string | null;
-  contact_name_2: string | null; email_2: string | null; phone_2: string | null;
-  contact_name_3: string | null; email_3: string | null; phone_3: string | null;
-  contact_name_4: string | null; email_4: string | null; phone_4: string | null;
-  contact_name_5: string | null; email_5: string | null; phone_5: string | null;
-  contact_name_6: string | null; email_6: string | null; phone_6: string | null;
-
-  latitude: number | null;
-  longitude: number | null;
+type ColumnMeta = {
+  column_name: string;
+  data_type: string;       // e.g. 'text', 'integer', 'boolean', 'timestamp without time zone', 'double precision'
+  is_nullable: 'YES' | 'NO';
+  column_default: string | null;
 };
 
+const RAW_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
+const API_BASE = RAW_BASE.replace(/\/+$/, ''); // sin barras finales
+const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN || '';
+
 function toIntOrNull(v: unknown): number | null {
-  if (v === '' || v === undefined || v === null) return null;
+  if (v === '' || v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
 }
 
 export default function AdminCenterEditorB() {
-  const [tab, setTab] = useState<'centers' | 'rules'>('centers');        // <<--- NUEVO
+  const [tab, setTab] = useState<'centers' | 'rules'>('centers');
+
+  const [schema, setSchema] = useState<ColumnMeta[]>([]);
+  const [columns, setColumns] = useState<MRT_ColumnDef<Center>[]>([]);
   const [data, setData] = useState<Center[]>([]);
   const [loading, setLoading] = useState(true);
-  const [centerToDelete, setCenterToDelete] = useState<Center | null>(null);
-  const router = useRouter();
 
+  const [centerToDelete, setCenterToDelete] = useState<Center | null>(null);
+  const [addColOpen, setAddColOpen] = useState(false);
+
+  // -------- load schema
+  const fetchSchema = useCallback(async () => {
+    try {
+      // intenta wrapper local primero (si lo tuvieras) y si falla, ve directo a la Lambda
+      const tryUrls = [
+        `/api/admin/columns?table=clinical_centers`,
+        `${API_BASE}/admin/columns?table=clinical_centers`,
+      ];
+      let lastErr: any;
+      for (const url of tryUrls) {
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (!r.ok) throw new Error(await r.text());
+          const js = await r.json();
+          const cols: ColumnMeta[] = Array.isArray(js) ? js : js.columns;
+          if (cols?.length) {
+            setSchema(cols);
+            return;
+          }
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      throw lastErr || new Error('No schema endpoint');
+    } catch (e: any) {
+      console.error(e);
+      toast.error('Failed loading schema');
+    }
+  }, []);
+
+  // -------- load data
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // idem: wrapper local si existiera -> Lambda
+      const tryUrls = [
+        '/api/sites/list',                 // tu wrapper tradicional (si apunta a SELECT * ahora)
+        `${API_BASE}/centers`,             // Lambda directa
+      ];
+      let ok = false;
+      for (const url of tryUrls) {
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (!r.ok) throw new Error(await r.text());
+          const js = await r.json();
+          const arr: Center[] = Array.isArray(js) ? js : (js.centers || js || []);
+          if (arr) {
+            setData(arr);
+            ok = true;
+            break;
+          }
+        } catch {}
+      }
+      if (!ok) throw new Error('No data');
+    } catch (e: any) {
+      console.error(e);
+      toast.error('❌ Failed to load centers');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // -------- build columns from schema (with special rules for known fields)
+  useEffect(() => {
+    if (!schema?.length) {
+      setColumns([]);
+      return;
+    }
+
+    const prettify = (k: string) =>
+      k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    const special: Record<string, MRT_ColumnDef<Center>> = {
+      country: {
+        accessorKey: 'country',
+        header: 'Country',
+        size: 60,
+        editVariant: 'select',
+        editSelectOptions: EU_COUNTRIES,
+        muiEditTextFieldProps: { select: true, required: true },
+      },
+      type_of_ed: {
+        accessorKey: 'type_of_ed',
+        header: 'Type of ED',
+        editVariant: 'select',
+        editSelectOptions: TYPE_OF_ED_OPTIONS,
+        muiEditTextFieldProps: { select: true },
+      },
+      monitor: {
+        accessorKey: 'monitor',
+        header: 'Monitor',
+        size: 60,
+        Cell: ({ cell }) => {
+          const v = cell.getValue();
+          if (v == null) return '—';
+          return (
+            <span
+              className="inline-block px-2 py-0.5 rounded text-xs"
+              style={{
+                background: v ? '#DCFCE7' : '#F3F4F6',
+                color: v ? '#065F46' : '#374151',
+              }}
+            >
+              {v ? 'Yes' : 'No'}
+            </span>
+          );
+        },
+        editVariant: 'select',
+        editSelectOptions: [
+          { value: true as any, label: 'Yes' },
+          { value: false as any, label: 'No' },
+          { value: '' as any, label: '—' },
+        ],
+        muiEditTextFieldProps: { select: true },
+      },
+    };
+
+    const defs: MRT_ColumnDef<Center>[] = [];
+
+    for (const col of schema) {
+      const key = col.column_name;
+      if (key === 'id') continue; // lo tratamos como PK no editable/oculto
+      if (key === 'created_at') continue;
+
+      if (special[key]) {
+        defs.push(special[key]);
+        continue;
+      }
+
+      const dt = col.data_type.toLowerCase();
+      const base: MRT_ColumnDef<Center> = {
+        accessorKey: key,
+        header: prettify(key),
+        enableHiding: true,
+      };
+
+      // heurística por tipo
+      if (dt.includes('integer')) {
+        base.muiEditTextFieldProps = { type: 'number', inputProps: { step: 1 } };
+      } else if (dt.includes('double')) {
+        base.muiEditTextFieldProps = { type: 'number', inputProps: { step: 'any' } };
+      } else if (dt.includes('boolean')) {
+        base.editVariant = 'select';
+        // muestra como Yes/No/— al editar
+        base.editSelectOptions = [
+          { value: true as any, label: 'Yes' },
+          { value: false as any, label: 'No' },
+          { value: '' as any, label: '—' },
+        ];
+        base.muiEditTextFieldProps = { select: true };
+        base.Cell = ({ cell }) => {
+          const v = cell.getValue();
+          if (v == null) return '—';
+          return (
+            <span
+              className="inline-block px-2 py-0.5 rounded text-xs"
+              style={{
+                background: v ? '#DCFCE7' : '#F3F4F6',
+                color: v ? '#065F46' : '#374151',
+              }}
+            >
+              {v ? 'Yes' : 'No'}
+            </span>
+          );
+        };
+      } else if (dt.includes('timestamp') || dt.includes('date')) {
+        base.muiEditTextFieldProps = { type: 'datetime-local' }; // o 'date' si prefieres
+      } else if (dt.includes('text') || dt.includes('character')) {
+        // TEXT / VARCHAR → sin props especiales
+      }
+
+      defs.push(base);
+    }
+
+    // asegura que 'name', 'address', 'city', 'zip_code' queden primeras si existen
+    const orderPriority = new Map([
+      ['name', 1],
+      ['address', 2],
+      ['city', 3],
+      ['country', 4],
+      ['zip_code', 5],
+      ['type_of_ed', 6],
+      ['detect_site', 7],
+    ]);
+    defs.sort((a, b) => {
+      const ak = a.accessorKey as string;
+      const bk = b.accessorKey as string;
+      const pa = orderPriority.get(ak) || 999;
+      const pb = orderPriority.get(bk) || 999;
+      return pa - pb || ak.localeCompare(bk);
+    });
+
+    setColumns(defs);
+  }, [schema]);
+
+  // cargar schema y data al entrar en la pestaña centers
   useEffect(() => {
     if (tab !== 'centers') return;
     (async () => {
-      try {
-        const res = await fetch('/api/sites/list', { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed fetching centers');
-        const result = await res.json();
-        const arr: Center[] = (result.centers || result || []) as Center[];
-        // asegúrate de que los nuevos campos existan
-        setData(
-          arr.map((c) => ({
-            ...c,
-            age_from: c.age_from ?? null,
-            age_to: c.age_to ?? null,
-            monitor: (c.monitor as any) ?? null,
-          }))
-        );
-      } catch {
-        toast.error('❌ Failed to load centers');
-      } finally {
-        setLoading(false);
-      }
+      await fetchSchema();
+      await fetchData();
     })();
-  }, [tab]);
+  }, [tab, fetchSchema, fetchData]);
 
+  // KPIs simples
   const stats = useMemo(() => {
     const totalCenters = data.length;
     const uniqueCountries = new Set(
@@ -114,6 +286,7 @@ export default function AdminCenterEditorB() {
     return { totalCenters, uniqueCountries, totalContacts };
   }, [data]);
 
+  // guardar edición
   const handleSaveRow = async ({
     exitEditingMode,
     row,
@@ -126,28 +299,27 @@ export default function AdminCenterEditorB() {
     try {
       const payload: Record<string, unknown> = { ...values };
 
-      // normaliza numéricos/boolean
+      // normaliza conocidos
       if ('age_from' in payload) payload.age_from = toIntOrNull(payload.age_from as any);
       if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
       if ('monitor' in payload && payload.monitor === '') payload.monitor = null;
 
-      delete payload.id;
+      delete (payload as any).id;
       Object.keys(payload).forEach((k) => {
-        // @ts-ignore
-        if (payload[k] === undefined) delete payload[k];
+        if ((payload as any)[k] === undefined) delete (payload as any)[k];
       });
 
-      const res = await fetch(`/api/sites/admin/update/${row.original.id}`, {
+      // usamos Lambda directa
+      const res = await fetch(`${API_BASE}/centers/${row.original.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(await res.text());
 
-      toast.success(`✅ Updated: ${values.name ?? row.original.name}`);
-      setData((prev) =>
-        prev.map((c) => (c.id === row.original.id ? { ...c, ...values } as Center : c))
-      );
+      toast.success(`✅ Updated: ${values.name ?? row.original.name ?? row.original.id}`);
+      // rehidrata (para reflejar tipos/normalizaciones del back)
+      await fetchData();
       exitEditingMode();
     } catch (e) {
       console.error(e);
@@ -155,14 +327,13 @@ export default function AdminCenterEditorB() {
     }
   };
 
+  // borrar
   const confirmDelete = async () => {
     if (!centerToDelete) return;
     try {
-      const res = await fetch(`/api/sites/admin/delete/${centerToDelete.id}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`${API_BASE}/centers/${centerToDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
-      toast.success(`🗑️ Deleted: ${centerToDelete.name}`);
+      toast.success(`🗑️ Deleted: ${centerToDelete.name ?? centerToDelete.id}`);
       setData((prev) => prev.filter((c) => c.id !== centerToDelete.id));
     } catch {
       toast.error('❌ Error deleting center');
@@ -171,102 +342,29 @@ export default function AdminCenterEditorB() {
     }
   };
 
-  const columns = useMemo<MRT_ColumnDef<Center>[]>(() => [
-    { accessorKey: 'name', header: 'Center Name',
-      muiEditTextFieldProps: { required: true } },
-    { accessorKey: 'address', header: 'Address',
-      muiEditTextFieldProps: { required: true } },
-    { accessorKey: 'city', header: 'City',
-      muiEditTextFieldProps: { required: true } },
+  // Utilidades
+  async function ensureStdColumns() {
+    try {
+      const res = await fetch(`${API_BASE}/admin/add-schema`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ADMIN_TOKEN ? { 'X-Admin-Token': ADMIN_TOKEN } : {}),
+        },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success('Schema ensured ✅');
+      await fetchSchema();
+      await fetchData();
+    } catch (e: any) {
+      toast.error(`Failed: ${e?.message || e}`);
+    }
+  }
 
-    {
-      accessorKey: 'country',
-      header: 'Country',
-      size: 60,
-      editVariant: 'select',
-      editSelectOptions: EU_COUNTRIES,
-      muiEditTextFieldProps: { select: true, required: true },
-    },
-    { accessorKey: 'zip_code', header: 'ZIP', size: 80,
-      muiEditTextFieldProps: { required: true } },
-
-    {
-      accessorKey: 'type_of_ed',
-      header: 'Type of ED',
-      editVariant: 'select',
-      editSelectOptions: TYPE_OF_ED_OPTIONS,
-      muiEditTextFieldProps: { select: true },
-    },
-    { accessorKey: 'detect_site', header: 'Detect Site' },
-
-    // NUEVOS: edad y monitor
-    { accessorKey: 'age_from', header: 'Age From', size: 60,
-      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
-    { accessorKey: 'age_to', header: 'Age To', size: 60,
-      muiEditTextFieldProps: { type: 'number', inputProps: { min: 0 } } },
-    {
-      accessorKey: 'monitor',
-      header: 'Monitor',
-      size: 60,
-      Cell: ({ cell }) => (
-        <span className="inline-block px-2 py-0.5 rounded text-xs"
-          style={{
-            background: cell.getValue() ? '#DCFCE7' : '#F3F4F6',
-            color: cell.getValue() ? '#065F46' : '#374151'
-          }}>
-          {cell.getValue() ? 'Yes' : 'No'}
-        </span>
-      ),
-      muiEditTextFieldProps: { select: true },
-      editVariant: 'select',
-      editSelectOptions: [
-        { value: true as any, label: 'Yes' },
-        { value: false as any, label: 'No' },
-        { value: '' as any, label: '—' }, // para null
-      ],
-    },
-
-    // Contacto principal
-    { accessorKey: 'contact_name_1', header: 'Primary Contact' },
-    { accessorKey: 'email_1', header: 'Primary Email',
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_1', header: 'Primary Phone',
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    // Contactos 2..6 (ocultos de inicio, editables en modal)
-    { accessorKey: 'contact_name_2', header: 'Contact 2', enableHiding: true },
-    { accessorKey: 'email_2', header: 'Email 2', enableHiding: true,
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_2', header: 'Phone 2', enableHiding: true,
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    { accessorKey: 'contact_name_3', header: 'Contact 3', enableHiding: true },
-    { accessorKey: 'email_3', header: 'Email 3', enableHiding: true,
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_3', header: 'Phone 3', enableHiding: true,
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    { accessorKey: 'contact_name_4', header: 'Contact 4', enableHiding: true },
-    { accessorKey: 'email_4', header: 'Email 4', enableHiding: true,
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_4', header: 'Phone 4', enableHiding: true,
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    { accessorKey: 'contact_name_5', header: 'Contact 5', enableHiding: true },
-    { accessorKey: 'email_5', header: 'Email 5', enableHiding: true,
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_5', header: 'Phone 5', enableHiding: true,
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    { accessorKey: 'contact_name_6', header: 'Contact 6', enableHiding: true },
-    { accessorKey: 'email_6', header: 'Email 6', enableHiding: true,
-      muiEditTextFieldProps: { type: 'email' } },
-    { accessorKey: 'phone_6', header: 'Phone 6', enableHiding: true,
-      muiEditTextFieldProps: { inputMode: 'tel' } },
-
-    { accessorKey: 'latitude', header: 'Lat', enableHiding: true },
-    { accessorKey: 'longitude', header: 'Lng', enableHiding: true },
-  ], []);
+  const refreshAll = async () => {
+    await fetchSchema();
+    await fetchData();
+  };
 
   return (
     <div className="px-4 py-8 bg-gray-100 min-h-screen">
@@ -276,7 +374,9 @@ export default function AdminCenterEditorB() {
             <img src="/innodia_cristal.png" alt="INNODIA Logo" className="w-10 h-10" />
             <h1 className="text-2xl font-bold text-inodia-blue">Admin</h1>
           </div>
-          <div className="flex gap-2">
+
+          {/* Tabs + tools */}
+          <div className="flex items-center gap-2">
             <button
               className={`px-4 py-2 rounded-md ${tab === 'centers' ? 'bg-inodia-blue text-white' : 'bg-gray-100'}`}
               onClick={() => setTab('centers')}
@@ -289,15 +389,51 @@ export default function AdminCenterEditorB() {
             >
               Program Rules
             </button>
+
+            {tab === 'centers' && (
+              <>
+                <button
+                  onClick={ensureStdColumns}
+                  className="ml-2 px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
+                  title="Ensure age_from, age_to, monitor (+geo)"
+                >
+                  Ensure std. columns
+                </button>
+
+                <button
+                  onClick={() => setAddColOpen(true)}
+                  className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
+                  title="Add any column"
+                >
+                  Add column…
+                </button>
+
+                <button
+                  onClick={refreshAll}
+                  className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
+                  title="Reload schema and data"
+                >
+                  Refresh schema
+                </button>
+              </>
+            )}
           </div>
         </div>
 
         {tab === 'centers' ? (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              <StatCard label="Total Centers" value={stats.totalCenters} />
-              <StatCard label="Countries" value={stats.uniqueCountries} />
-              <StatCard label="Total Contacts" value={stats.totalContacts} />
+              <StatCard label="Total Centers" value={data.length} />
+              <StatCard label="Countries" value={new Set(data.map(d => d.country).filter(Boolean)).size} />
+              <StatCard label="Total Contacts" value={
+                data.reduce((acc, c) => {
+                  const names = [
+                    c.contact_name_1, c.contact_name_2, c.contact_name_3,
+                    c.contact_name_4, c.contact_name_5, c.contact_name_6,
+                  ];
+                  return acc + names.filter(Boolean).length;
+                }, 0)
+              } />
             </div>
 
             {!loading && data.length === 0 && (
@@ -344,11 +480,6 @@ export default function AdminCenterEditorB() {
               initialState={{
                 pagination: { pageSize: 10, pageIndex: 0 },
                 columnVisibility: {
-                  contact_name_2: false, email_2: false, phone_2: false,
-                  contact_name_3: false, email_3: false, phone_3: false,
-                  contact_name_4: false, email_4: false, phone_4: false,
-                  contact_name_5: false, email_5: false, phone_5: false,
-                  contact_name_6: false, email_6: false, phone_6: false,
                   latitude: true, longitude: true,
                 },
               }}
@@ -367,9 +498,18 @@ export default function AdminCenterEditorB() {
               onCancel={() => setCenterToDelete(null)}
               onConfirm={confirmDelete}
             />
+
+            {/* El modal que ya usas (apunta a tu wrapper /api/admin/add-column). 
+               Tras añadir columnas, pulsa "Refresh schema" para que aparezcan automáticamente */}
+            <AddColumnModal
+              open={addColOpen}
+              onClose={() => setAddColOpen(false)}
+              table="clinical_centers"
+              onSuccess={refreshAll}
+            />
           </>
         ) : (
-          <ProgramRulesEditor />   // <<--- NUEVO PANEL
+          <ProgramRulesEditor />
         )}
       </div>
     </div>
