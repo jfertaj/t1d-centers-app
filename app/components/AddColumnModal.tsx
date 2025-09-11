@@ -19,17 +19,24 @@ const TYPE_OPTIONS = [
   { key: 'TIMESTAMP', label: 'Timestamp' },
 ];
 
+const RESERVED = new Set(['id', 'created_at']);
+
 function slugifyToColumn(raw: string) {
-  // snake_case solo con letras, números y guiones bajos, empieza por letra
+  // snake_case solo con letras, números y guiones bajos; empieza por letra
   let s = (raw || '').trim().toLowerCase();
   s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // sin acentos
-  s = s.replace(/[^a-z0-9]+/g, '_');                     // no alfanumérico -> _
-  s = s.replace(/^_+|_+$/g, '').replace(/_{2,}/g, '_');  // bordes y dobles
-  if (!/^[a-z]/.test(s)) s = `c_${s}`;                   // que empiece por letra
+  s = s.replace(/[^a-z0-9]+/g, '_');                      // no alfanumérico -> _
+  s = s.replace(/^_+|_+$/g, '').replace(/_{2,}/g, '_');   // bordes y dobles
+  if (!/^[a-z]/.test(s)) s = `c_${s}`;                    // que empiece por letra
   return s.slice(0, 63);                                  // límite típico
 }
 
-export default function AddColumnModal({ open, onClose, table = 'clinical_centers', onSuccess }: Props) {
+export default function AddColumnModal({
+  open,
+  onClose,
+  table = 'clinical_centers',
+  onSuccess,
+}: Props) {
   const [label, setLabel] = useState('');
   const [colName, setColName] = useState('');
   const [type, setType] = useState('TEXT');
@@ -43,22 +50,36 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
 
   const composeDefaultClause = () => {
     if (!defValue) return undefined;
-    // quoting sencillo por tipo
+
+    // Funciones o palabras clave aceptadas tal cual (NOW(), CURRENT_DATE, CURRENT_TIMESTAMP)
+    if (/^\s*[A-Z_]+\(\)\s*$/.test(defValue) || /^\s*CURRENT(_DATE|_TIMESTAMP)?\s*$/.test(defValue)) {
+      return defValue.trim();
+    }
+
+    // Booleanos
     if (type === 'BOOLEAN') {
-      const v = String(defValue).toLowerCase();
+      const v = String(defValue).trim().toLowerCase();
       if (v === 'true' || v === 'false') return v.toUpperCase();
+      // también aceptamos 1/0
+      if (v === '1' || v === '0') return v === '1' ? 'TRUE' : 'FALSE';
       return undefined;
     }
+
+    // Números
     if (type === 'INTEGER' || type === 'DOUBLE PRECISION') {
       const n = Number(defValue);
       if (Number.isFinite(n)) return String(n);
       return undefined;
     }
-    // funciones como NOW() o CURRENT_DATE se aceptan tal cual
-    if (/^\s*[A-Z_]+\(\)\s*$/.test(defValue) || /^\s*CURRENT(_DATE|_TIMESTAMP)?\s*$/.test(defValue)) {
-      return defValue.trim();
+
+    // Fechas (como literal); si quiere función debe usar CURRENT_DATE/NOW()
+    if (type === 'DATE' || type === 'TIMESTAMP') {
+      // Pasar como string literal
+      const escaped = String(defValue).replace(/'/g, "''");
+      return `'${escaped}'`;
     }
-    // cadenas con comillas simples escapadas
+
+    // TEXT y resto: comillar
     const escaped = String(defValue).replace(/'/g, "''");
     return `'${escaped}'`;
   };
@@ -69,6 +90,11 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
       toast.error('Column name is required');
       return;
     }
+    if (RESERVED.has(safeName)) {
+      toast.error(`"${safeName}" es un nombre reservado`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -83,18 +109,31 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
         ],
       };
 
-      const res = await fetch('/api/admin/add-column', {
+      // ⬇️ Importante: usamos el proxy correcto que apunta a /admin/add-columns en la Lambda
+      const res = await fetch('/api/admin/add-columns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error(await res.text());
+      // Manejo de respuesta
+      const text = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch { data = { message: text }; }
+
+      if (!res.ok) {
+        throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+      }
+
       toast.success(`Column "${safeName}" added/ensured`);
       onSuccess?.();
       onClose();
       // reset
-      setLabel(''); setColName(''); setType('TEXT'); setNullable(true); setDefValue('');
+      setLabel('');
+      setColName('');
+      setType('TEXT');
+      setNullable(true);
+      setDefValue('');
     } catch (e: any) {
       toast.error(e?.message || 'Failed adding column');
     } finally {
@@ -107,7 +146,9 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-lg">
-        <h3 className="text-lg font-semibold mb-4">Add column to <span className="font-mono">{table}</span></h3>
+        <h3 className="text-lg font-semibold mb-4">
+          Add column to <span className="font-mono">{table}</span>
+        </h3>
 
         <div className="space-y-3">
           <div>
@@ -120,6 +161,7 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
               placeholder="e.g., Enrollment date"
             />
           </div>
+
           <div>
             <label className="block text-sm text-gray-700 mb-1">Column name (snake_case)</label>
             <input
@@ -128,8 +170,11 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
               onChange={(e) => setColName(slugifyToColumn(e.target.value))}
               placeholder="enrollment_date"
             />
-            <p className="text-xs text-gray-500 mt-1">Solo letras, números y “_”. Máx 63 chars. Debe empezar por letra.</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Solo letras, números y “_”. Máx 63 chars. Debe empezar por letra.
+            </p>
           </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-sm text-gray-700 mb-1">Type</label>
@@ -138,14 +183,20 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
                 value={type}
                 onChange={(e) => setType(e.target.value)}
               >
-                {TYPE_OPTIONS.map(o => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
+                {TYPE_OPTIONS.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
             </div>
             <div className="flex items-end">
               <label className="inline-flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={nullable} onChange={(e) => setNullable(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={nullable}
+                  onChange={(e) => setNullable(e.target.checked)}
+                />
                 Nullable
               </label>
             </div>
@@ -160,14 +211,16 @@ export default function AddColumnModal({ open, onClose, table = 'clinical_center
               placeholder={`Ej.: true | 0 | NOW() | CURRENT_DATE | 'MISSING'`}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Para funciones usa <code className="font-mono">NOW()</code>, <code className="font-mono">CURRENT_DATE</code>, etc.
-              Cadenas irán entre comillas simples.
+              Para funciones usa <code className="font-mono">NOW()</code>,{' '}
+              <code className="font-mono">CURRENT_DATE</code>, etc. Cadenas irán entre comillas simples.
             </p>
           </div>
         </div>
 
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 rounded-md border" disabled={submitting}>Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-md border" disabled={submitting}>
+            Cancel
+          </button>
           <button
             onClick={submit}
             disabled={submitting}

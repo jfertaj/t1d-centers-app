@@ -47,7 +47,6 @@ type ColumnMeta = {
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
 const API_BASE = RAW_BASE.replace(/\/+$/, ''); // sin barras finales
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN || '';
 
 function toIntOrNull(v: unknown): number | null {
   if (v === '' || v == null) return null;
@@ -66,30 +65,15 @@ export default function AdminCenterEditorB() {
   const [centerToDelete, setCenterToDelete] = useState<Center | null>(null);
   const [addColOpen, setAddColOpen] = useState(false);
 
-  // -------- load schema
+  // -------- load schema (SIEMPRE vía proxy Next)
   const fetchSchema = useCallback(async () => {
     try {
-      // intenta wrapper local primero (si lo tuvieras) y si falla, ve directo a la Lambda
-      const tryUrls = [
-        `/api/admin/columns?table=clinical_centers`,
-        `${API_BASE}/admin/columns?table=clinical_centers`,
-      ];
-      let lastErr: any;
-      for (const url of tryUrls) {
-        try {
-          const r = await fetch(url, { cache: 'no-store' });
-          if (!r.ok) throw new Error(await r.text());
-          const js = await r.json();
-          const cols: ColumnMeta[] = Array.isArray(js) ? js : js.columns;
-          if (cols?.length) {
-            setSchema(cols);
-            return;
-          }
-        } catch (e) {
-          lastErr = e;
-        }
-      }
-      throw lastErr || new Error('No schema endpoint');
+      const r = await fetch(`/api/admin/columns?table=clinical_centers`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(await r.text());
+      const js = await r.json();
+      const cols: ColumnMeta[] = Array.isArray(js) ? js : js.columns;
+      if (!cols?.length) throw new Error('Empty schema');
+      setSchema(cols);
     } catch (e: any) {
       console.error(e);
       toast.error('Failed loading schema');
@@ -100,33 +84,28 @@ export default function AdminCenterEditorB() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // idem: wrapper local si existiera -> Lambda
-      const tryUrls = [
-        '/api/sites/list',                 // tu wrapper tradicional (si apunta a SELECT * ahora)
-        `${API_BASE}/centers`,             // Lambda directa
-      ];
-      let ok = false;
+      // wrapper tradicional (si ya lo tienes) o fallback directo
+      const tryUrls = ['/api/sites/list', `${API_BASE}/centers`];
+      let loaded = false;
       for (const url of tryUrls) {
         try {
           const r = await fetch(url, { cache: 'no-store' });
           if (!r.ok) throw new Error(await r.text());
           const js = await r.json();
           const arr: Center[] = Array.isArray(js) ? js : (js.centers || js || []);
-          if (arr) {
-            setData(arr);
-            ok = true;
-            break;
-          }
+          setData(arr || []);
+          loaded = true;
+          break;
         } catch {}
       }
-      if (!ok) throw new Error('No data');
+      if (!loaded) throw new Error('No data');
     } catch (e: any) {
       console.error(e);
       toast.error('❌ Failed to load centers');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [API_BASE]);
 
   // -------- build columns from schema (with special rules for known fields)
   useEffect(() => {
@@ -187,8 +166,7 @@ export default function AdminCenterEditorB() {
 
     for (const col of schema) {
       const key = col.column_name;
-      if (key === 'id') continue; // lo tratamos como PK no editable/oculto
-      if (key === 'created_at') continue;
+      if (key === 'id' || key === 'created_at') continue;
 
       if (special[key]) {
         defs.push(special[key]);
@@ -202,14 +180,12 @@ export default function AdminCenterEditorB() {
         enableHiding: true,
       };
 
-      // heurística por tipo
       if (dt.includes('integer')) {
         base.muiEditTextFieldProps = { type: 'number', inputProps: { step: 1 } };
       } else if (dt.includes('double')) {
         base.muiEditTextFieldProps = { type: 'number', inputProps: { step: 'any' } };
       } else if (dt.includes('boolean')) {
         base.editVariant = 'select';
-        // muestra como Yes/No/— al editar
         base.editSelectOptions = [
           { value: true as any, label: 'Yes' },
           { value: false as any, label: 'No' },
@@ -231,16 +207,15 @@ export default function AdminCenterEditorB() {
             </span>
           );
         };
-      } else if (dt.includes('timestamp') || dt.includes('date')) {
-        base.muiEditTextFieldProps = { type: 'datetime-local' }; // o 'date' si prefieres
-      } else if (dt.includes('text') || dt.includes('character')) {
-        // TEXT / VARCHAR → sin props especiales
+      } else if (dt.includes('timestamp')) {
+        base.muiEditTextFieldProps = { type: 'datetime-local' };
+      } else if (dt.includes('date')) {
+        base.muiEditTextFieldProps = { type: 'date' };
       }
 
       defs.push(base);
     }
 
-    // asegura que 'name', 'address', 'city', 'zip_code' queden primeras si existen
     const orderPriority = new Map([
       ['name', 1],
       ['address', 2],
@@ -270,23 +245,6 @@ export default function AdminCenterEditorB() {
     })();
   }, [tab, fetchSchema, fetchData]);
 
-  // KPIs simples
-  const stats = useMemo(() => {
-    const totalCenters = data.length;
-    const uniqueCountries = new Set(
-      data.map((d) => d.country).filter(Boolean) as string[]
-    ).size;
-    const totalContacts = data.reduce((acc, c) => {
-      const names = [
-        c.contact_name_1, c.contact_name_2, c.contact_name_3,
-        c.contact_name_4, c.contact_name_5, c.contact_name_6,
-      ];
-      return acc + names.filter(Boolean).length;
-    }, 0);
-    return { totalCenters, uniqueCountries, totalContacts };
-  }, [data]);
-
-  // guardar edición
   const handleSaveRow = async ({
     exitEditingMode,
     row,
@@ -299,7 +257,6 @@ export default function AdminCenterEditorB() {
     try {
       const payload: Record<string, unknown> = { ...values };
 
-      // normaliza conocidos
       if ('age_from' in payload) payload.age_from = toIntOrNull(payload.age_from as any);
       if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
       if ('monitor' in payload && payload.monitor === '') payload.monitor = null;
@@ -309,7 +266,6 @@ export default function AdminCenterEditorB() {
         if ((payload as any)[k] === undefined) delete (payload as any)[k];
       });
 
-      // usamos Lambda directa
       const res = await fetch(`${API_BASE}/centers/${row.original.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -318,7 +274,6 @@ export default function AdminCenterEditorB() {
       if (!res.ok) throw new Error(await res.text());
 
       toast.success(`✅ Updated: ${values.name ?? row.original.name ?? row.original.id}`);
-      // rehidrata (para reflejar tipos/normalizaciones del back)
       await fetchData();
       exitEditingMode();
     } catch (e) {
@@ -327,7 +282,6 @@ export default function AdminCenterEditorB() {
     }
   };
 
-  // borrar
   const confirmDelete = async () => {
     if (!centerToDelete) return;
     try {
@@ -342,15 +296,11 @@ export default function AdminCenterEditorB() {
     }
   };
 
-  // Utilidades
   async function ensureStdColumns() {
     try {
-      const res = await fetch(`${API_BASE}/admin/add-schema`, {
+      const res = await fetch(`/api/admin/add-schema`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(ADMIN_TOKEN ? { 'X-Admin-Token': ADMIN_TOKEN } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
       if (!res.ok) throw new Error(await res.text());
       toast.success('Schema ensured ✅');
@@ -499,8 +449,6 @@ export default function AdminCenterEditorB() {
               onConfirm={confirmDelete}
             />
 
-            {/* El modal que ya usas (apunta a tu wrapper /api/admin/add-column). 
-               Tras añadir columnas, pulsa "Refresh schema" para que aparezcan automáticamente */}
             <AddColumnModal
               open={addColOpen}
               onClose={() => setAddColOpen(false)}

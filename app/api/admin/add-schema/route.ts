@@ -1,9 +1,9 @@
-// app/api/admin/add-columns/route.ts
+// app/api/admin/add-schema/route.ts
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
     const adminToken = process.env.ADMIN_TOKEN || '';
@@ -14,19 +14,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-
-    const resp = await fetch(`${base}/admin/add-columns`, {
+    const resp = await fetch(`${base}/admin/add-schema`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Admin-Token': adminToken,
       },
-      body: JSON.stringify(body),
     });
 
     const text = await resp.text();
-    let data: unknown;
+    let data: any;
     try { data = JSON.parse(text); } catch { data = { message: text }; }
 
     return NextResponse.json(data, { status: resp.status });

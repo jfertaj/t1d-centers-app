@@ -1,9 +1,9 @@
-// app/api/admin/add-columns/route.ts
+// app/api/admin/columns/route.ts
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: Request) {
+export async function GET(req: Request) {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
     const adminToken = process.env.ADMIN_TOKEN || '';
@@ -13,27 +13,20 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+    const { searchParams } = new URL(req.url);
+    const table = searchParams.get('table') || 'clinical_centers';
 
-    const body = await req.json();
-
-    const resp = await fetch(`${base}/admin/add-columns`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Admin-Token': adminToken,
-      },
-      body: JSON.stringify(body),
+    const resp = await fetch(`${base}/admin/columns?table=${encodeURIComponent(table)}`, {
+      headers: { 'X-Admin-Token': adminToken },
+      cache: 'no-store',
     });
 
     const text = await resp.text();
-    let data: unknown;
+    let data: any;
     try { data = JSON.parse(text); } catch { data = { message: text }; }
 
     return NextResponse.json(data, { status: resp.status });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: 'Proxy error', details: String(e?.message || e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Proxy error', details: String(e?.message || e) }, { status: 500 });
   }
 }

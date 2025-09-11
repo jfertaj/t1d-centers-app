@@ -1,16 +1,26 @@
 // app/api/sites/list/route.ts
 // app/api/sites/list/route.ts
 import { NextResponse } from 'next/server';
-import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    // Devuelve los centros con los nuevos campos incluidos
-    const data = await apiFetch('/centers', { method: 'GET' });
-    // Tu backend ya devuelve snake_case, así que no transformamos nada aquí.
-    return NextResponse.json(Array.isArray(data) ? data : [], { status: 200 });
+    const base = process.env.NEXT_PUBLIC_API_BASE;
+    if (!base) {
+      return NextResponse.json({ error: 'NEXT_PUBLIC_API_BASE not set' }, { status: 500 });
+    }
+
+    // La Lambda en GET /centers ya hace SELECT * FROM clinical_centers
+    const upstream = await fetch(`${base}/centers`, { cache: 'no-store' });
+    const text = await upstream.text();
+
+    let data: any;
+    try { data = JSON.parse(text); } catch { data = []; }
+
+    // Normalizamos: garantizamos array
+    const arr = Array.isArray(data) ? data : (data?.centers || []);
+    return NextResponse.json(arr, { status: upstream.status });
   } catch (err: any) {
     console.error('❌ list centers proxy error:', err);
     return NextResponse.json(
