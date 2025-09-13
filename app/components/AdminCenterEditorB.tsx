@@ -41,7 +41,7 @@ type Center = Record<string, any>;
 
 type ColumnMeta = {
   column_name: string;
-  data_type: string;       // e.g. 'text', 'integer', 'boolean', 'timestamp without time zone', 'double precision'
+  data_type: string;
   is_nullable: 'YES' | 'NO';
   column_default: string | null;
 };
@@ -53,6 +53,17 @@ function toIntOrNull(v: unknown): number | null {
   if (v === '' || v == null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+// Heurística para convertir detect_site (texto legacy) a booleano
+function coerceDetectBool(v: any): boolean | null {
+  if (v == null || v === '') return null;
+  const s = String(v).toLowerCase().trim();
+  if (['1','true','yes','y','t'].includes(s)) return true;
+  if (['0','false','no','n','f'].includes(s)) return false;
+  if (s.includes('yes')) return true;
+  if (s.includes('no')) return false;
+  return null;
 }
 
 export default function AdminCenterEditorB() {
@@ -85,7 +96,6 @@ export default function AdminCenterEditorB() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      // wrapper tradicional (si ya lo tienes) o fallback directo
       const tryUrls = ['/api/sites/list', `${API_BASE}/centers`];
       let loaded = false;
       for (const url of tryUrls) {
@@ -94,7 +104,17 @@ export default function AdminCenterEditorB() {
           if (!r.ok) throw new Error(await r.text());
           const js = await r.json();
           const arr: Center[] = Array.isArray(js) ? js : (js.centers || js || []);
-          setData(arr || []);
+
+          // Deriva detect_site_bool desde detect_site si no existe
+          const normalized = (arr || []).map((c) => {
+            const out = { ...c } as any;
+            if (!('detect_site_bool' in out)) {
+              out.detect_site_bool = coerceDetectBool(out.detect_site);
+            }
+            return out;
+          });
+
+          setData(normalized);
           loaded = true;
           break;
         } catch {}
@@ -161,7 +181,7 @@ export default function AdminCenterEditorB() {
         ],
         muiEditTextFieldProps: { select: true },
       },
-      // ✅ NUEVO: Detect Site como booleano
+      // Detect Site como booleano (desde legacy)
       detect_site_bool: {
         accessorKey: 'detect_site_bool',
         header: 'Detect Site',
@@ -197,7 +217,7 @@ export default function AdminCenterEditorB() {
       const key = col.column_name;
       if (key === 'id' || key === 'created_at') continue;
 
-      // ⛔️ oculta la antigua textual si sigue en la tabla
+      // oculta la textual antigua si existe
       if (key === 'detect_site') continue;
 
       if (special[key]) {
@@ -291,7 +311,7 @@ export default function AdminCenterEditorB() {
 
       if ('age_from' in payload) payload.age_from = toIntOrNull(payload.age_from as any);
       if ('age_to' in payload) payload.age_to = toIntOrNull(payload.age_to as any);
-      if ('monitor' in payload && payload.monitor === '') payload.monitor = null;
+      if ('monitor' in payload && (payload as any).monitor === '') (payload as any).monitor = null;
 
       delete (payload as any).id;
       Object.keys(payload).forEach((k) => {
@@ -397,6 +417,26 @@ export default function AdminCenterEditorB() {
                 >
                   Refresh schema
                 </button>
+
+                {/* NUEVO: Re-geocodificar todos los que faltan */}
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/admin/regeo-missing', { method: 'POST' });
+                      const js = await res.json();
+                      if (!res.ok) throw new Error(JSON.stringify(js));
+                      toast.success(`Re-geocoded: ${js.attempted} centers`);
+                      await fetchData();
+                    } catch (e: any) {
+                      console.error(e);
+                      toast.error('❌ Re-geocode failed');
+                    }
+                  }}
+                  className="px-3 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                  title="Re-geocode all centers without coordinates"
+                >
+                  Re-geocode missing
+                </button>
               </>
             )}
           </div>
@@ -454,6 +494,71 @@ export default function AdminCenterEditorB() {
                   >
                     Delete
                   </button>
+
+                  {/* NUEVO: Verify (usa tu /api/geocoding/verify) */}
+                  <button
+                    onClick={async () => {
+                      const c = row.original as any;
+                      try {
+                        const r = await fetch('/api/geocoding/verify', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            address:  c.address  ?? '',
+                            city:     c.city     ?? '',
+                            zip_code: c.zip_code ?? '',
+                            country:  c.country  ?? '',
+                          }),
+                        });
+                        const j = await r.json();
+                        if (!r.ok) throw new Error(JSON.stringify(j));
+                        const status = j.status || j.error || 'OK';
+                        const msg =
+                          (j.partial ? 'Partial match. ' : '') +
+                          (j.formatted_address ? `→ ${j.formatted_address}` : '');
+                        toast((t) => (
+                          <span>
+                            <b>Verify:</b> {status} {msg && <i>{msg}</i>}
+                          </span>
+                        ));
+                      } catch (e: any) {
+                        console.error(e);
+                        toast.error('❌ Verify failed');
+                      }
+                    }}
+                    className="px-2 py-1 text-sm bg-gray-100 rounded hover:bg-gray-200"
+                  >
+                    Verify
+                  </button>
+
+                  {/* NUEVO: Forzar re-geo de esa fila */}
+                  <button
+                    onClick={async () => {
+                      const c = row.original as any;
+                      try {
+                        const res = await fetch(`${API_BASE}/centers/${c.id}`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            address:  c.address  ?? '',
+                            city:     c.city     ?? '',
+                            zip_code: c.zip_code ?? '',
+                            country:  c.country  ?? '',
+                          }),
+                        });
+                        const js = await res.json().catch(() => ({}));
+                        if (!res.ok) throw new Error(JSON.stringify(js));
+                        toast.success('✅ Forced re-geocode');
+                        await fetchData();
+                      } catch (e: any) {
+                        console.error(e);
+                        toast.error('❌ Force re-geo failed');
+                      }
+                    }}
+                    className="px-2 py-1 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700"
+                  >
+                    Force re-geo
+                  </button>
                 </div>
               )}
               enableEditing
@@ -488,20 +593,20 @@ export default function AdminCenterEditorB() {
               onSuccess={refreshAll}
             />
             {tab === 'centers' && (
-            <Link
-              href="/sites/create"
-              aria-label="Register new clinical center"
-              title="Register new clinical center"
-              className="fixed right-5 bottom-5 md:right-8 md:bottom-8 z-50"
-            >
-              <span className="flex items-center gap-2 rounded-full shadow-lg bg-inodia-blue text-white px-5 py-3 hover:bg-blue-700 transition">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                <span className="hidden sm:inline text-sm font-medium">New Center</span>
-              </span>
-            </Link>
-          )}
+              <Link
+                href="/sites/create"
+                aria-label="Register new clinical center"
+                title="Register new clinical center"
+                className="fixed right-5 bottom-5 md:right-8 md:bottom-8 z-50"
+              >
+                <span className="flex items-center gap-2 rounded-full shadow-lg bg-inodia-blue text-white px-5 py-3 hover:bg-blue-700 transition">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                  <span className="hidden sm:inline text-sm font-medium">New Center</span>
+                </span>
+              </Link>
+            )}
           </>
         ) : (
           <ProgramRulesEditor />
