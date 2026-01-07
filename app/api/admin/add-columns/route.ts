@@ -6,12 +6,14 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
-    const adminToken = process.env.ADMIN_TOKEN || '';
-    if (!base || !adminToken) {
-      return NextResponse.json(
-        { error: 'Missing NEXT_PUBLIC_API_BASE or ADMIN_TOKEN' },
-        { status: 500 }
-      );
+    // Intentar leer ambas variables para máxima compatibilidad
+    const adminToken = process.env.ADMIN_TOKEN || process.env.NEXT_PUBLIC_ADMIN_TOKEN || '';
+
+    if (!base) {
+      return NextResponse.json({ error: 'Missing environment variable: NEXT_PUBLIC_API_BASE' }, { status: 500 });
+    }
+    if (!adminToken) {
+      return NextResponse.json({ error: 'Missing environment variable: ADMIN_TOKEN' }, { status: 500 });
     }
 
     const body = await req.json();

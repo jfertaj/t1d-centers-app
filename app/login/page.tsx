@@ -4,6 +4,7 @@
 import { useAuth } from 'react-oidc-context';
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { userManager } from '@lib/auth';
 
 const getRedirectUri = () =>
   process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ||
@@ -34,7 +35,14 @@ export default function LoginPage() {
     [auth.isAuthenticated, auth.isLoading, auth.error]
   );
 
-  const startLogin = () => {
+  const startLogin = async () => {
+    // Limpia estados antiguos (evita "No matching state" si hubo intentos fallidos previos)
+    try {
+      await userManager.clearStaleState();
+    } catch (e) {
+      console.warn('Error clearing stale state:', e);
+    }
+
     // Pasamos redirect_uri y guardamos "next" dentro de state (OIDC permite usarlo de forma opaca)
     auth.signinRedirect?.({
       redirect_uri: redirectUri,

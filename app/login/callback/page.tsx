@@ -1,14 +1,19 @@
 // app/login/callback/page.tsx
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { userManager } from '@lib/auth';
 
 export default function CallbackPage() {
   const router = useRouter();
 
+  const processing = useRef(false);
+
   useEffect(() => {
+    if (processing.current) return;
+    processing.current = true;
+
     let cancelled = false;
 
     (async () => {
@@ -26,7 +31,10 @@ export default function CallbackPage() {
         }
 
         if (!cancelled) router.replace(next);
-      } catch {
+      } catch (err: any) {
+        console.warn('Callback processing error:', err);
+        // Si falla por "No matching state", muchas veces es porque ya se procesó.
+        // Redirigir igualmente suele ser seguro si el usuario ya tiene sesión.
         if (!cancelled) router.replace('/sites/create');
       }
     })();
