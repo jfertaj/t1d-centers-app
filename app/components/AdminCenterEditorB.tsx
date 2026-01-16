@@ -30,11 +30,11 @@ const TYPE_OF_ED_OPTIONS = [
 ];
 
 const EU_COUNTRIES = [
-  'Austria','Belgium','Bulgaria','Croatia','Cyprus','Czech Republic','Denmark',
-  'Estonia','Finland','France','Germany','Greece','Hungary','Iceland','Ireland',
-  'Italy','Latvia','Liechtenstein','Lithuania','Luxembourg','Malta','Netherlands',
-  'Norway','Poland','Portugal','Romania','Slovakia','Slovenia','Spain','Sweden',
-  'Switzerland','United Kingdom'
+  'Austria', 'Belgium', 'Bulgaria', 'Croatia', 'Cyprus', 'Czech Republic', 'Denmark',
+  'Estonia', 'Finland', 'France', 'Germany', 'Greece', 'Hungary', 'Iceland', 'Ireland',
+  'Italy', 'Latvia', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Malta', 'Netherlands',
+  'Norway', 'Poland', 'Portugal', 'Romania', 'Slovakia', 'Slovenia', 'Spain', 'Sweden',
+  'Switzerland', 'United Kingdom'
 ].map((c) => ({ value: c, label: c }));
 
 type Center = Record<string, any>;
@@ -59,8 +59,8 @@ function toIntOrNull(v: unknown): number | null {
 function coerceDetectBool(v: any): boolean | null {
   if (v == null || v === '') return null;
   const s = String(v).toLowerCase().trim();
-  if (['1','true','yes','y','t'].includes(s)) return true;
-  if (['0','false','no','n','f'].includes(s)) return false;
+  if (['1', 'true', 'yes', 'y', 't'].includes(s)) return true;
+  if (['0', 'false', 'no', 'n', 'f'].includes(s)) return false;
   if (s.includes('yes')) return true;
   if (s.includes('no')) return false;
   return null;
@@ -117,7 +117,7 @@ export default function AdminCenterEditorB() {
           setData(normalized);
           loaded = true;
           break;
-        } catch {}
+        } catch { }
       }
       if (!loaded) throw new Error('No data');
     } catch (e: any) {
@@ -437,6 +437,44 @@ export default function AdminCenterEditorB() {
                 >
                   Re-geocode missing
                 </button>
+
+                <button
+                  onClick={() => {
+                    if (!data.length) {
+                      toast.error('No data to export');
+                      return;
+                    }
+                    const headers = schema.map(c => c.column_name);
+                    const csvRows = [headers.join(',')];
+
+                    for (const row of data) {
+                      const values = headers.map(header => {
+                        const val = row[header];
+                        if (val === null || val === undefined) return '';
+                        const str = String(val);
+                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                          return `"${str.replace(/"/g, '""')}"`;
+                        }
+                        return str;
+                      });
+                      csvRows.push(values.join(','));
+                    }
+
+                    const csvString = csvRows.join('\n');
+                    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `clinical_centers_${new Date().toISOString().slice(0, 10)}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-3 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700 text-sm"
+                  title="Download current table as CSV"
+                >
+                  Download CSV
+                </button>
               </>
             )}
           </div>
@@ -504,10 +542,10 @@ export default function AdminCenterEditorB() {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            address:  c.address  ?? '',
-                            city:     c.city     ?? '',
+                            address: c.address ?? '',
+                            city: c.city ?? '',
                             zip_code: c.zip_code ?? '',
-                            country:  c.country  ?? '',
+                            country: c.country ?? '',
                           }),
                         });
                         const j = await r.json();
@@ -540,10 +578,10 @@ export default function AdminCenterEditorB() {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            address:  c.address  ?? '',
-                            city:     c.city     ?? '',
+                            address: c.address ?? '',
+                            city: c.city ?? '',
                             zip_code: c.zip_code ?? '',
-                            country:  c.country  ?? '',
+                            country: c.country ?? '',
                           }),
                         });
                         const js = await res.json().catch(() => ({}));
@@ -601,7 +639,7 @@ export default function AdminCenterEditorB() {
               >
                 <span className="flex items-center gap-2 rounded-full shadow-lg bg-inodia-blue text-white px-5 py-3 hover:bg-blue-700 transition">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
                   <span className="hidden sm:inline text-sm font-medium">New Center</span>
                 </span>
@@ -612,6 +650,6 @@ export default function AdminCenterEditorB() {
           <ProgramRulesEditor />
         )}
       </div>
-    </div>
+    </div >
   );
 }
