@@ -368,11 +368,15 @@ export default function AdminCenterEditorB() {
     await fetchData();
   };
 
+  // Plain numbers (e.g. negative longitudes like "-6.2603") can't execute as
+  // formulas/DDE payloads, so leave them numeric instead of apostrophe-prefixing.
+  const isPlainNumber = (str: string) => /^[+-]?\d+(\.\d+)?$/.test(str);
+
   const escapeCsvField = (raw: string) => {
     let str = raw;
     // Neutralize CSV formula injection (Excel/Sheets executing =, +, -, @ prefixed cells,
     // including after leading whitespace/control characters)
-    if (/^[\x00-\x20]*[=+\-@]/.test(str)) str = `'${str}`;
+    if (/^[\x00-\x20]*[=+\-@]/.test(str) && !isPlainNumber(str)) str = `'${str}`;
     if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
       return `"${str.replace(/"/g, '""')}"`;
     }
