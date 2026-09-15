@@ -368,6 +368,51 @@ export default function AdminCenterEditorB() {
     await fetchData();
   };
 
+  const escapeCsvField = (raw: string) => {
+    let str = raw;
+    // Neutralize CSV formula injection (Excel/Sheets executing =, +, -, @ prefixed cells,
+    // including after leading whitespace/control characters)
+    if (/^[\x00-\x20]*[=+\-@]/.test(str)) str = `'${str}`;
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  };
+
+  const handleDownloadCsv = () => {
+    if (!data.length) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers = schema.map(c => c.column_name);
+    // Column names come from the "Add column" admin feature, so they are
+    // user-controlled and need the same escaping as data values.
+    const csvRows = [headers.map(escapeCsvField).join(',')];
+
+    for (const row of data) {
+      const values = headers.map(header => {
+        const val = row[header];
+        if (val === null || val === undefined) return '';
+        return escapeCsvField(String(val));
+      });
+      csvRows.push(values.join(','));
+    }
+
+    // Leading BOM so Excel correctly detects UTF-8 (accented center/city/country names)
+    const csvString = '﻿' + csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `clinical_centers_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Deferred: revoking the blob URL synchronously can race the download
+    // start in Firefox/Safari and produce an empty file.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   return (
     <div className="px-4 py-8 bg-gray-100 min-h-screen">
       <div className="max-w-7xl mx-auto bg-white rounded-2xl shadow-lg p-6">
@@ -439,37 +484,7 @@ export default function AdminCenterEditorB() {
                 </button>
 
                 <button
-                  onClick={() => {
-                    if (!data.length) {
-                      toast.error('No data to export');
-                      return;
-                    }
-                    const headers = schema.map(c => c.column_name);
-                    const csvRows = [headers.join(',')];
-
-                    for (const row of data) {
-                      const values = headers.map(header => {
-                        const val = row[header];
-                        if (val === null || val === undefined) return '';
-                        const str = String(val);
-                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                          return `"${str.replace(/"/g, '""')}"`;
-                        }
-                        return str;
-                      });
-                      csvRows.push(values.join(','));
-                    }
-
-                    const csvString = csvRows.join('\n');
-                    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.setAttribute('download', `clinical_centers_${new Date().toISOString().slice(0, 10)}.csv`);
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                  }}
+                  onClick={handleDownloadCsv}
                   className="px-3 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700 text-sm"
                   title="Download current table as CSV"
                 >
