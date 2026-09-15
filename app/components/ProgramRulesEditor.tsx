@@ -265,18 +265,69 @@ export default function ProgramRulesEditor() {
     }
   };
 
+  const handleDownloadCsv = () => {
+    if (!rules.length) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers: (keyof Rule)[] = [
+      'id', 'country', 'postal_format', 'rule_pattern', 'age_from', 'age_to',
+      'type_of_ed', 'program_key', 'program_name', 'program_url', 'sites',
+    ];
+    const csvRows = [headers.join(',')];
+
+    for (const rule of rules) {
+      const values = headers.map((header) => {
+        const val = rule[header];
+        if (val === null || val === undefined) return '';
+        let str = String(val);
+        // Neutralize CSV formula injection (Excel/Sheets executing =, +, -, @ prefixed cells,
+        // including after leading whitespace)
+        if (/^\s*[=+\-@]/.test(str)) str = `'${str}`;
+        if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      });
+      csvRows.push(values.join(','));
+    }
+
+    // Leading BOM so Excel correctly detects UTF-8 (accented country/program/site names)
+    const csvString = '﻿' + csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `program_rules_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Deferred: revoking the blob URL synchronously can race the download
+    // start in Firefox/Safari and produce an empty file.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-gray-600">
           Manage geographic/age rules to redirect users to programs (EDENT1FI, DiaUnion, etc.).
         </p>
-        <button
-          onClick={() => handleCreate()}
-          className="px-3 py-2 bg-inodia-blue text-white rounded hover:bg-blue-700"
-        >
-          ➕ New Rule
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownloadCsv}
+            className="px-3 py-2 rounded-md bg-gray-600 text-white hover:bg-gray-700 text-sm"
+            title="Download current table as CSV"
+          >
+            Download CSV
+          </button>
+          <button
+            onClick={() => handleCreate()}
+            className="px-3 py-2 bg-inodia-blue text-white rounded hover:bg-blue-700"
+          >
+            ➕ New Rule
+          </button>
+        </div>
       </div>
 
       <MaterialReactTable
