@@ -368,9 +368,11 @@ export default function AdminCenterEditorB() {
     await fetchData();
   };
 
-  // Plain numbers (e.g. negative longitudes like "-6.2603") can't execute as
-  // formulas/DDE payloads, so leave them numeric instead of apostrophe-prefixing.
-  const isPlainNumber = (str: string) => /^[+-]?\d+(\.\d+)?$/.test(str);
+  // Plain numbers (e.g. negative longitudes like "-6.2603", or exponent-form
+  // values like "-5e-7" from String(Number) on very small magnitudes) can't
+  // execute as formulas/DDE payloads, so leave them numeric instead of
+  // apostrophe-prefixing.
+  const isPlainNumber = (str: string) => /^[+-]?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(str);
 
   const escapeCsvField = (raw: string) => {
     let str = raw;
