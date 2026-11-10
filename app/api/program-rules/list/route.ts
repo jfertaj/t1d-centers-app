@@ -1,5 +1,6 @@
 // app/api/program-rules/list/route.ts
 import { NextResponse, NextRequest } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
       u.searchParams.set(k, v);
     }
 
-    const resp = await fetch(u.toString(), { method: 'GET', cache: 'no-store' });
+    const resp = await fetch(u.toString(), { method: 'GET', cache: 'no-store', headers: forwardAuth(req) });
     const text = await resp.text();
     let data: any;
     try { data = JSON.parse(text); } catch { data = { message: text }; }

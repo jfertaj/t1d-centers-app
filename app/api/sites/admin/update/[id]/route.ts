@@ -1,5 +1,6 @@
 // app/api/sites/admin/update/[id]/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
@@ -80,6 +81,7 @@ export async function PUT(req: Request) {
     }
 
     const upstream = await apiFetch(`/centers/${idNum}`, {
+      headers: forwardAuth(req),
       method: 'PUT',
       body: payload,
     });

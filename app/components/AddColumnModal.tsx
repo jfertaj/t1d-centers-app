@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { authFetch } from '@lib/authFetch';
 
 type Props = {
   open: boolean;
@@ -110,7 +111,7 @@ export default function AddColumnModal({
       };
 
       // ⬇️ Importante: usamos el proxy correcto que apunta a /admin/add-columns en la Lambda
-      const res = await fetch('/api/admin/add-columns', {
+      const res = await authFetch('/api/admin/add-columns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

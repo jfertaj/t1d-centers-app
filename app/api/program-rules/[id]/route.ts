@@ -1,5 +1,6 @@
 // app/api/program-rules/[id]/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,7 @@ export async function PUT(req: Request, context: any) {
 
     const res = await fetch(`${base}/program-rules/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...forwardAuth(req), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
@@ -29,7 +30,7 @@ export async function PUT(req: Request, context: any) {
   }
 }
 
-export async function DELETE(_req: Request, context: any) {
+export async function DELETE(req: Request, context: any) {
   try {
     const { id } = (context?.params ?? {}) as { id?: string };
     if (!id) {
@@ -37,7 +38,7 @@ export async function DELETE(_req: Request, context: any) {
     }
 
     const base = process.env.NEXT_PUBLIC_API_BASE!;
-    const res = await fetch(`${base}/program-rules/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/program-rules/${id}`, { method: 'DELETE', headers: forwardAuth(req) });
     const data = await res.json().catch(() => ({}));
     return NextResponse.json(data, { status: res.status });
   } catch (e: any) {

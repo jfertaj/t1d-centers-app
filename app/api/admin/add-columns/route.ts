@@ -1,5 +1,6 @@
 // app/api/admin/add-columns/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
 
     const resp = await fetch(`${base}/admin/add-columns`, {
       method: 'POST',
-      headers: {
+      headers: { ...forwardAuth(req),
         'Content-Type': 'application/json',
         'X-Admin-Token': adminToken,
       },

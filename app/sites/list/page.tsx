@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { authFetch } from '@lib/authFetch';
 
 interface ClinicalCenter {
   id: number;
@@ -24,7 +25,7 @@ export default function SitesListPage() {
     async function fetchCenters() {
       try {
         // evita caché para no traer una forma distinta del payload al volver
-        const res = await fetch('/api/sites/list', { cache: 'no-store' });
+        const res = await authFetch('/api/sites/list', { cache: 'no-store' });
         const data = await res.json();
 
         // Normaliza: acepta tanto [{...}] como { centers: [{...}] }

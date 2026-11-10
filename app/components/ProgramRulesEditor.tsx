@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
+import { authFetch } from '@lib/authFetch';
 
 type Rule = {
   id: number;
@@ -58,7 +59,7 @@ export default function ProgramRulesEditor() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/program-rules/list', { cache: 'no-store' });
+      const res = await authFetch('/api/program-rules/list', { cache: 'no-store' });
       const data = await res.json();
       setRules(Array.isArray(data) ? data : (data.rules || []));
     } catch (e) {
@@ -194,7 +195,7 @@ export default function ProgramRulesEditor() {
         if (payload[k] === '') payload[k] = null;
       });
 
-      const res = await fetch('/api/program-rules/create', {
+      const res = await authFetch('/api/program-rules/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -232,7 +233,7 @@ export default function ProgramRulesEditor() {
         if (payload[k as keyof typeof payload] === '') payload[k as keyof typeof payload] = null;
       });
 
-      const res = await fetch(`/api/program-rules/${row.original.id}`, {
+      const res = await authFetch(`/api/program-rules/${row.original.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -253,7 +254,7 @@ export default function ProgramRulesEditor() {
   const confirmDelete = async () => {
     if (!toDelete) return;
     try {
-      const res = await fetch(`/api/program-rules/${toDelete.id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/program-rules/${toDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       setRules((prev) => prev.filter((r) => r.id !== toDelete.id));
       toast.success('Deleted');

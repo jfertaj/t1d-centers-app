@@ -13,6 +13,7 @@ import ConfirmModal from './ConfirmModal';
 import ProgramRulesEditor from './ProgramRulesEditor';
 import AddColumnModal from './AddColumnModal';
 import Link from 'next/link';
+import { authFetch } from '@lib/authFetch';
 
 function StatCard({ label, value }: { label: string | number; value: string | number }) {
   return (
@@ -80,7 +81,7 @@ export default function AdminCenterEditorB() {
   // -------- load schema (SIEMPRE vía proxy Next)
   const fetchSchema = useCallback(async () => {
     try {
-      const r = await fetch(`/api/admin/columns?table=clinical_centers`, { cache: 'no-store' });
+      const r = await authFetch(`/api/admin/columns?table=clinical_centers`, { cache: 'no-store' });
       if (!r.ok) throw new Error(await r.text());
       const js = await r.json();
       const cols: ColumnMeta[] = Array.isArray(js) ? js : js.columns;
@@ -100,7 +101,7 @@ export default function AdminCenterEditorB() {
       let loaded = false;
       for (const url of tryUrls) {
         try {
-          const r = await fetch(url, { cache: 'no-store' });
+          const r = await authFetch(url, { cache: 'no-store' });
           if (!r.ok) throw new Error(await r.text());
           const js = await r.json();
           const arr: Center[] = Array.isArray(js) ? js : (js.centers || js || []);
@@ -318,7 +319,7 @@ export default function AdminCenterEditorB() {
         if ((payload as any)[k] === undefined) delete (payload as any)[k];
       });
 
-      const res = await fetch(`${API_BASE}/centers/${row.original.id}`, {
+      const res = await authFetch(`${API_BASE}/centers/${row.original.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -337,7 +338,7 @@ export default function AdminCenterEditorB() {
   const confirmDelete = async () => {
     if (!centerToDelete) return;
     try {
-      const res = await fetch(`${API_BASE}/centers/${centerToDelete.id}`, { method: 'DELETE' });
+      const res = await authFetch(`${API_BASE}/centers/${centerToDelete.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       toast.success(`🗑️ Deleted: ${centerToDelete.name ?? centerToDelete.id}`);
       setData((prev) => prev.filter((c) => c.id !== centerToDelete.id));
@@ -350,7 +351,7 @@ export default function AdminCenterEditorB() {
 
   async function ensureStdColumns() {
     try {
-      const res = await fetch(`/api/admin/add-schema`, {
+      const res = await authFetch(`/api/admin/add-schema`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -473,7 +474,7 @@ export default function AdminCenterEditorB() {
                 <button
                   onClick={async () => {
                     try {
-                      const res = await fetch('/api/admin/regeo-missing', { method: 'POST' });
+                      const res = await authFetch('/api/admin/regeo-missing', { method: 'POST' });
                       const js = await res.json();
                       if (!res.ok) throw new Error(JSON.stringify(js));
                       toast.success(`Re-geocoded: ${js.attempted} centers`);
@@ -559,7 +560,7 @@ export default function AdminCenterEditorB() {
                     onClick={async () => {
                       const c = row.original as any;
                       try {
-                        const r = await fetch('/api/geocoding/verify', {
+                        const r = await authFetch('/api/geocoding/verify', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -595,7 +596,7 @@ export default function AdminCenterEditorB() {
                     onClick={async () => {
                       const c = row.original as any;
                       try {
-                        const res = await fetch(`${API_BASE}/centers/${c.id}`, {
+                        const res = await authFetch(`${API_BASE}/centers/${c.id}`, {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({

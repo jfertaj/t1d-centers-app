@@ -1,5 +1,6 @@
 // app/api/admin/columns/route.ts
 import { NextResponse, NextRequest } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
 
     const upstream = await fetch(
       `${base}/admin/columns?table=${encodeURIComponent(table)}`,
-      { method: 'GET', cache: 'no-store' }
+      { method: 'GET', cache: 'no-store', headers: forwardAuth(req) }
     );
 
     // Intenta JSON; si no, devuelve texto envuelto

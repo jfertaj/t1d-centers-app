@@ -1,12 +1,14 @@
 // app/api/admin/stats/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const stats = await apiFetch('/admin/stats', {
+      headers: forwardAuth(req),
       method: 'GET',
     });
     return NextResponse.json(stats, { status: 200 });

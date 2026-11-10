@@ -1,9 +1,10 @@
 // app/api/admin/add-schema/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
     const adminToken = process.env.ADMIN_TOKEN || process.env.NEXT_PUBLIC_ADMIN_TOKEN || '';
@@ -17,7 +18,7 @@ export async function POST() {
 
     const resp = await fetch(`${base}/admin/add-schema`, {
       method: 'POST',
-      headers: {
+      headers: { ...forwardAuth(req),
         'Content-Type': 'application/json',
         'X-Admin-Token': adminToken,
       },

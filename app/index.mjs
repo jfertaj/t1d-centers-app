@@ -72,6 +72,39 @@ function normalizePath(event) {
   return p;
 }
 
+/* =========================
+   AuthZ: solo el navegador público lee sin token
+========================= */
+// Rutas que usa el Navigator público (innodia-t1d-navigator.org) sin login.
+// Todo lo demás exige un access token de Cognito del grupo `admin`. El JWT lo
+// valida el authorizer del API Gateway (firma, issuer, client_id); aquí solo
+// leemos sus claims ya verificados. Sin claims => 401 (falla cerrado aunque
+// una ruta del gateway quede mal configurada sin authorizer).
+function isPublicRoute(method, path) {
+  if (method === 'GET') {
+    return path === CENTERS
+      || path === PROGRAM_RULES
+      || new RegExp(`^${PROGRAM_RULES}/\\d+$`).test(path);
+  }
+  return method === 'POST' && path === DISTANCE;
+}
+
+// HTTP API entrega los arrays de claims como string: "[admin users]".
+function claimGroups(claims) {
+  const raw = claims?.['cognito:groups'];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw !== 'string') return [];
+  return raw.replace(/^\[|\]$/g, '').split(/[\s,]+/).filter(Boolean);
+}
+
+function authzError(event, method, path) {
+  if (isPublicRoute(method, path)) return null;
+  const claims = event.requestContext?.authorizer?.jwt?.claims;
+  if (!claims) return { status: 401, error: 'Authentication required' };
+  if (!claimGroups(claims).includes('admin')) return { status: 403, error: 'Admin group required' };
+  return null;
+}
+
 function parseJsonSafe(s) {
   try { return s ? JSON.parse(s) : {}; } catch { return {}; }
 }
@@ -392,6 +425,9 @@ export const handler = async (event) => {
 
   // CORS preflight
   if (method === 'OPTIONS') return jsonResponse(200, { ok: true }, origin);
+
+  const denied = authzError(event, method, path);
+  if (denied) return jsonResponse(denied.status, { error: denied.error }, origin);
 
   try {
     /* ---------- Health & Debug ---------- */

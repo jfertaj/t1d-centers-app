@@ -57,13 +57,18 @@ export function getUserManager(): UserManager {
     scope: 'openid email',
     // Almacenamiento en localStorage del navegador
     userStore: new WebStorageStateStore({ store: window.localStorage }),
-    // Renovación silenciosa (si en el futuro habilitas iframe de silent renew)
-    automaticSilentRenew: false,
+    // Renueva el access token con el refresh token de Cognito antes de que
+    // caduque: las APIs ahora exigen un token válido en cada llamada.
+    automaticSilentRenew: true,
     // timeouts por defecto están bien; puedes ajustarlos si lo necesitas
   });
 
   return _userManager;
 }
+
+// Proveedor federado (Microsoft 365 de INNODIA) del user pool. Al pasarlo
+// como `identity_provider`, Cognito salta su pantalla y va directo a Microsoft.
+export const SSO_PROVIDER = process.env.NEXT_PUBLIC_COGNITO_IDP || 'INNODIA-M365';
 
 // Para AuthProvider: crea el userManager solo en cliente
 export const userManager =

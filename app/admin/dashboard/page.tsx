@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { authFetch } from '@lib/authFetch';
 
 type Stats = {
   totalCenters: number;
@@ -16,7 +17,7 @@ export default function AdminDashboard() {
     async function fetchStats() {
       setLoading(true);
       try {
-        const res = await fetch('/api/admin/stats');
+        const res = await authFetch('/api/admin/stats');
         const data = await res.json();
         setStats(data);
       } catch (err) {
