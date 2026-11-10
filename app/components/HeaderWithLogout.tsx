@@ -15,6 +15,9 @@ export default function HeaderWithLogout() {
 
   const handleLogout = async () => {
     try {
+      // Revoca el refresh token antes de borrar la sesión: si otra pestaña está
+      // renovando, su renovación falla en vez de restaurar la sesión.
+      await userManager.revokeTokens(['refresh_token']).catch(() => undefined);
       await userManager.removeUser(); // 🔒 limpiar sesión local
       const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
       const logoutUri = process.env.NEXT_PUBLIC_COGNITO_LOGOUT_URI!;

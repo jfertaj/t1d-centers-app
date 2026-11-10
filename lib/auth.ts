@@ -79,6 +79,9 @@ export async function signOutRedirect() {
   if (typeof window === 'undefined') return;
   try {
     const um = getUserManager();
+    // Revoca el refresh token: una renovación pendiente en otra pestaña falla
+    // en vez de restaurar la sesión tras el logout.
+    await um.revokeTokens(['refresh_token']).catch(() => undefined);
     await um.signoutRedirect();
   } catch (e) {
     // Fallback: Hosted UI /logout directo

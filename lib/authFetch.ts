@@ -15,16 +15,28 @@ async function currentUser(): Promise<User | null> {
   const um = getUserManager();
   const user = await um.getUser();
   if (!user?.expired || !user.refresh_token) return user;
-  // On failure send the request unauthenticated and let the 401 surface.
   refreshing ??= um.signinSilent().catch(() => null).finally(() => { refreshing = null; });
   return refreshing;
 }
 
+// A session that can no longer produce a valid token (refresh token expired or
+// revoked) would otherwise leave the UI "signed in" while every save fails.
+async function endDeadSession(): Promise<void> {
+  await getUserManager().removeUser().catch(() => undefined);
+  const next = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.assign(`/login?next=${next}`);
+}
+
 export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const user = await currentUser();
-  const headers = new Headers(init.headers);
-  if (user?.access_token && !user.expired) {
-    headers.set('Authorization', `Bearer ${user.access_token}`);
+  const token = user && !user.expired ? user.access_token : null;
+  if (!token) {
+    await endDeadSession();
+    throw new Error('Session expired');
   }
-  return fetch(input, { ...init, headers });
+  const headers = new Headers(init.headers);
+  headers.set('Authorization', `Bearer ${token}`);
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 401) await endDeadSession();
+  return res;
 }

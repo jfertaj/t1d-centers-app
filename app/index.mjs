@@ -102,6 +102,9 @@ function authzError(event, method, path) {
   if (isPublicRoute(method, path)) return null;
   const claims = event.requestContext?.authorizer?.jwt?.claims;
   if (!claims) return { status: 401, error: 'Authentication required' };
+  // The HTTP API JWT authorizer accepts any token whose aud/client_id matches,
+  // which includes ID tokens. Only access tokens may authorize calls.
+  if (claims.token_use !== 'access') return { status: 401, error: 'Access token required' };
   if (!claimGroups(claims).includes('admin')) return { status: 403, error: 'Admin group required' };
   return null;
 }
