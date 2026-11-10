@@ -72,6 +72,23 @@ function normalizePath(event) {
   return p;
 }
 
+// DDL can't take bind parameters, so a column DEFAULT must be rendered as a
+// literal. It is validated per type and escaped instead of being interpolated
+// raw (which let a crafted default run arbitrary SQL). Returns '' for no
+// default, the DEFAULT clause, or null when the type/value is not allowed.
+const COLUMN_TYPES = new Set(['TEXT','INTEGER','DOUBLE PRECISION','BOOLEAN','DATE','TIMESTAMP']);
+function columnDefault(type, raw) {
+  if (!COLUMN_TYPES.has(type)) return null;
+  if (raw === undefined || raw === null || raw === '') return '';
+  const v = String(raw).trim();
+  switch (type) {
+    case 'INTEGER':          return /^-?\d+$/.test(v) ? `DEFAULT ${v}` : null;
+    case 'DOUBLE PRECISION': return Number.isFinite(Number(v)) && v !== '' ? `DEFAULT ${Number(v)}` : null;
+    case 'BOOLEAN':          return /^(true|false)$/i.test(v) ? `DEFAULT ${v.toLowerCase()}` : null;
+    default:                 return `DEFAULT ${pgPkg.escapeLiteral(v)}`; // TEXT, DATE, TIMESTAMP
+  }
+}
+
 function parseJsonSafe(s) {
   try { return s ? JSON.parse(s) : {}; } catch { return {}; }
 }
@@ -341,43 +358,37 @@ function mapRuleRowOut(r, hasActive) {
   };
 }
 
-// Mapea payload del front → columnas reales existentes
+// Mapea payload del front → columnas reales existentes.
+// Los dos editores usan nombres distintos para el mismo dato (ProgramRulesEditor:
+// rule_pattern / program_key / program_url; la página legacy: zip_pattern /
+// program_code / website / message). Se distingue "campo ausente" (no tocar)
+// de "campo enviado como null" (borrar), y postal_format (el formato, p. ej.
+// "NNNNN") ya no se sobrescribe con el patrón de matching.
 function mapRuleInToDb(body, existing) {
   const out = {};
+  const sent = (k) => Object.prototype.hasOwnProperty.call(body, k);
+  // Primer alias presente en el body; undefined si no se envió ninguno.
+  const pick = (...keys) => {
+    const k = keys.find(sent);
+    return k === undefined ? undefined : body[k];
+  };
+  // Escribe el valor en todas las columnas-alias que existan en la tabla.
+  const put = (value, ...cols) => {
+    if (value === undefined) return;
+    for (const c of cols) if (existing.has(c)) out[c] = value;
+  };
 
-  if ('country' in body)        out.country       = body.country;
-  if ('age_from' in body)       out.age_from      = body.age_from;
-  if ('age_to' in body)         out.age_to        = body.age_to;
-  if ('type_of_ed' in body)     out.type_of_ed    = body.type_of_ed;
-  if ('program_name' in body)   out.program_name  = body.program_name;
-
-  const zipPat = body.zip_pattern ?? body.rule_pattern ?? body.postal_format;
-  if (zipPat != null) {
-    if (existing.has('zip_pattern'))    out.zip_pattern   = zipPat;
-    if (existing.has('rule_pattern'))   out.rule_pattern  = zipPat;
-    if (existing.has('postal_format'))  out.postal_format = zipPat; // opcional duplicado
+  for (const k of ['country', 'age_from', 'age_to', 'type_of_ed', 'program_name', 'priority', 'active', 'sites']) {
+    if (sent(k) && (existing.has(k) || ['country', 'age_from', 'age_to', 'type_of_ed', 'program_name'].includes(k))) {
+      out[k] = body[k];
+    }
   }
 
-  const pcode = body.program_code ?? body.program_key;
-  if (pcode != null) {
-    if (existing.has('program_code')) out.program_code = pcode;
-    if (existing.has('program_key'))  out.program_key  = pcode;
-  }
-
-  const purl = body.website ?? body.program_url;
-  if (purl != null) {
-    if (existing.has('website'))     out.website     = purl;
-    if (existing.has('program_url')) out.program_url = purl;
-  }
-
-  const msg = body.message ?? body.notes;
-  if (msg != null) {
-    if (existing.has('message')) out.message = msg;
-    if (existing.has('notes'))   out.notes   = msg;
-  }
-
-  if ('priority' in body && existing.has('priority')) out.priority = body.priority;
-  if ('active'   in body && existing.has('active'))   out.active   = body.active;
+  put(pick('rule_pattern', 'zip_pattern'), 'rule_pattern', 'zip_pattern');
+  put(pick('postal_format'), 'postal_format');
+  put(pick('program_key', 'program_code'), 'program_key', 'program_code');
+  put(pick('program_url', 'website'), 'program_url', 'website');
+  put(pick('message', 'notes'), 'message', 'notes');
 
   return out;
 }
@@ -531,9 +542,9 @@ export const handler = async (event) => {
         return jsonResponse(400, { error: 'Invalid table name' }, origin);
       }
 
-      const ALLOWED_TYPES = new Set(['TEXT','INTEGER','DOUBLE PRECISION','BOOLEAN','DATE','TIMESTAMP']);
-
-      const db = await getPool();
+      // Validate every column before touching the schema, then apply them in
+      // one transaction, so a bad entry can't leave a half-applied batch.
+      const statements = [];
       for (const c of columns) {
         const name = String(c.name || '').trim();
         const type = String(c.type || '').trim().toUpperCase();
@@ -541,13 +552,25 @@ export const handler = async (event) => {
         if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
           return jsonResponse(400, { error: `Invalid column name: ${name}` }, origin);
         }
-        if (!ALLOWED_TYPES.has(type)) {
-          return jsonResponse(400, { error: `Type not allowed: ${type}` }, origin);
+        const def = columnDefault(type, c.default);
+        if (def === null) {
+          return jsonResponse(400, { error: `Invalid type or default for column ${name}` }, origin);
         }
         const nullable = c.nullable === false ? 'NOT NULL' : '';
-        const def = c.default ? `DEFAULT ${c.default}` : '';
-        const sql = `ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${name} ${type} ${def} ${nullable}`.replace(/\s+/g,' ').trim();
-        await db.query(sql);
+        statements.push(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${name} ${type} ${def} ${nullable}`.replace(/\s+/g,' ').trim());
+      }
+
+      const db = await getPool();
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        for (const sql of statements) await client.query(sql);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
       }
       tableColumnsCache.delete(`names:${table}`);
       tableMetaCache.delete(`meta:${table}`);
