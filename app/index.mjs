@@ -90,12 +90,17 @@ function isPublicRoute(method, path) {
   return method === 'POST' && path === DISTANCE;
 }
 
-// HTTP API entrega los arrays de claims como string: "[admin users]".
+// HTTP API entrega los arrays de claims como string: "[admin users]"
+// (también se acepta la forma JSON '["admin","users"]').
 function claimGroups(claims) {
   const raw = claims?.['cognito:groups'];
   if (Array.isArray(raw)) return raw.map(String);
   if (typeof raw !== 'string') return [];
-  return raw.replace(/^\[|\]$/g, '').split(/[\s,]+/).filter(Boolean);
+  return raw
+    .replace(/^\[|\]$/g, '')
+    .split(/[\s,]+/)
+    .map((g) => g.replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
 }
 
 function authzError(event, method, path) {

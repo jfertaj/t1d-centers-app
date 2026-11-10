@@ -14,7 +14,12 @@ const CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
 // jose caches the keys and rate-limits refetches for the life of the runtime.
 const JWKS = ISSUER ? createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`)) : null;
 
-export type AdminTokenError = { status: 401 | 403 | 500; error: string };
+export type AdminTokenError = { status: 401 | 403 | 500 | 503; error: string };
+
+// jose codes that mean "this token is not acceptable". Anything else (JWKS
+// timeout, unreachable or malformed key set) is our outage, not the caller's
+// fault: answering 401 would make authFetch sign a valid admin out.
+const INVALID_TOKEN = /^ERR_(JWT_|JWS_|JWKS_NO_MATCHING_KEY|JWKS_MULTIPLE_MATCHING_KEYS|JOSE_ALG_NOT_ALLOWED|JOSE_NOT_SUPPORTED)/;
 
 /** Returns null when the caller is a signed-in admin, otherwise why not. */
 export async function adminTokenError(authorization: string | null): Promise<AdminTokenError | null> {
@@ -27,7 +32,9 @@ export async function adminTokenError(authorization: string | null): Promise<Adm
   let claims: JWTPayload;
   try {
     ({ payload: claims } = await jwtVerify(token, JWKS, { issuer: ISSUER }));
-  } catch {
+  } catch (err) {
+    const code = (err as { code?: string })?.code ?? '';
+    if (!INVALID_TOKEN.test(code)) return { status: 503, error: 'Token verification unavailable' };
     return { status: 401, error: 'Invalid or expired token' };
   }
 
