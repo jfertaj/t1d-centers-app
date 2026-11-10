@@ -5,6 +5,7 @@ import { useAuth } from 'react-oidc-context';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, ReactNode } from 'react';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
+import { ADMIN_GROUP } from '@lib/groups';
 import HeaderWithLogout from '@/components/HeaderWithLogout';
 
 // 👇 rutas que NO exigen login
@@ -23,7 +24,7 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
   const groups = useCognitoGroups();
 
   const isPublic = PUBLIC_PATHS.has(pathname);
-  const isAdmin = groups.includes('admin');
+  const isAdmin = groups.includes(ADMIN_GROUP);
   const isAdminRoute = pathname.startsWith('/admin');
 
   useEffect(() => {

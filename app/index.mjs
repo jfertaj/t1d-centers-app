@@ -33,6 +33,7 @@ const DISTANCE            = `${BASE}/distance`;
 
 // Program rules
 const PROGRAM_RULES       = `${BASE}/program-rules`;
+const PROGRAM_RULE_ID_RE = new RegExp(`^${PROGRAM_RULES}/\\d+$`);
 const ADMIN_CREATE_RULES  = `${BASE}/admin/create-rules-table`;
 
 // 👉 NUEVO: re-geocodificar los centros sin lat/lng
@@ -84,7 +85,7 @@ function isPublicRoute(method, path) {
   if (method === 'GET') {
     return path === CENTERS
       || path === PROGRAM_RULES
-      || new RegExp(`^${PROGRAM_RULES}/\\d+$`).test(path);
+      || PROGRAM_RULE_ID_RE.test(path);
   }
   return method === 'POST' && path === DISTANCE;
 }

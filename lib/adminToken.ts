@@ -6,56 +6,39 @@
 //
 // Edge-runtime safe (jose uses Web Crypto), so it can run inside middleware.
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
-
-export const ADMIN_GROUP = 'admin';
+import { ADMIN_GROUP, groupsOf } from '@lib/groups';
 
 const ISSUER = process.env.NEXT_PUBLIC_COGNITO_AUTHORITY || process.env.NEXT_PUBLIC_COGNITO_ISSUER || '';
 const CLIENT_ID = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || '';
 
-// Built lazily and cached for the lifetime of the runtime; jose caches the keys.
-let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJwks() {
-  if (!jwks) jwks = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`));
-  return jwks;
-}
+// jose caches the keys and rate-limits refetches for the life of the runtime.
+const JWKS = ISSUER ? createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`)) : null;
 
-export type AdminCheck =
-  | { ok: true; claims: JWTPayload }
-  | { ok: false; status: 401 | 403 | 500; error: string };
+export type AdminTokenError = { status: 401 | 403 | 500; error: string };
 
-export function bearerToken(authorization: string | null): string | null {
-  const m = authorization?.match(/^Bearer\s+(\S+)$/i);
-  return m ? m[1] : null;
-}
-
-/** Cognito puts groups in `cognito:groups` as an array. */
-export function groupsOf(claims: JWTPayload): string[] {
-  const raw = claims['cognito:groups'];
-  return Array.isArray(raw) ? raw.map(String) : [];
-}
-
-export async function verifyAdminToken(authorization: string | null): Promise<AdminCheck> {
+/** Returns null when the caller is a signed-in admin, otherwise why not. */
+export async function adminTokenError(authorization: string | null): Promise<AdminTokenError | null> {
   // Fail closed: a deploy without the Cognito env must not become an open API.
-  if (!ISSUER || !CLIENT_ID) return { ok: false, status: 500, error: 'Auth is not configured' };
+  if (!JWKS || !CLIENT_ID) return { status: 500, error: 'Auth is not configured' };
 
-  const token = bearerToken(authorization);
-  if (!token) return { ok: false, status: 401, error: 'Missing bearer token' };
+  const token = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!token) return { status: 401, error: 'Missing bearer token' };
 
   let claims: JWTPayload;
   try {
-    ({ payload: claims } = await jwtVerify(token, getJwks(), { issuer: ISSUER }));
+    ({ payload: claims } = await jwtVerify(token, JWKS, { issuer: ISSUER }));
   } catch {
-    return { ok: false, status: 401, error: 'Invalid or expired token' };
+    return { status: 401, error: 'Invalid or expired token' };
   }
 
   // Cognito access tokens carry `client_id` (not `aud`) and `token_use: access`.
   if (claims.token_use !== 'access' || claims.client_id !== CLIENT_ID) {
-    return { ok: false, status: 401, error: 'Wrong token type or client' };
+    return { status: 401, error: 'Wrong token type or client' };
   }
   if (!groupsOf(claims).includes(ADMIN_GROUP)) {
-    return { ok: false, status: 403, error: 'Admin group required' };
+    return { status: 403, error: 'Admin group required' };
   }
-  return { ok: true, claims };
+  return null;
 }
 
 /** Headers that pass the caller's token on to the API Gateway (JWT authorizer). */

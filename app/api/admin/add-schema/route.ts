@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export async function POST(req: Request) {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
-    const adminToken = process.env.ADMIN_TOKEN || process.env.NEXT_PUBLIC_ADMIN_TOKEN || '';
+    const adminToken = process.env.ADMIN_TOKEN || '';
 
     if (!base) {
       return NextResponse.json({ error: 'Missing environment variable: NEXT_PUBLIC_API_BASE' }, { status: 500 });

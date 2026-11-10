@@ -4,13 +4,14 @@ import { useAuth } from 'react-oidc-context';
 import { useRouter } from 'next/navigation';
 import { userManager } from '@lib/auth';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
+import { ADMIN_GROUP } from '@lib/groups';
 import { Settings, List } from 'lucide-react'; // 👈 Iconos corporativos
 
 export default function HeaderWithLogout() {
   const auth = useAuth();
   const router = useRouter();
   const groups = useCognitoGroups();
-  const isAdmin = groups.includes('admin');
+  const isAdmin = groups.includes(ADMIN_GROUP);
 
   const handleLogout = async () => {
     try {
