@@ -2,7 +2,7 @@
 
 import { useAuth } from 'react-oidc-context';
 import { useRouter } from 'next/navigation';
-import { userManager } from '@lib/auth';
+import { signOutRedirect } from '@lib/auth';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
 import { ADMIN_GROUP } from '@lib/groups';
 import { Settings, List } from 'lucide-react'; // 👈 Iconos corporativos
@@ -13,22 +13,7 @@ export default function HeaderWithLogout() {
   const groups = useCognitoGroups();
   const isAdmin = groups.includes(ADMIN_GROUP);
 
-  const handleLogout = async () => {
-    try {
-      // Revoca el refresh token antes de borrar la sesión: si otra pestaña está
-      // renovando, su renovación falla en vez de restaurar la sesión.
-      await userManager.revokeTokens(['refresh_token']).catch(() => undefined);
-      await userManager.removeUser(); // 🔒 limpiar sesión local
-      const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-      const logoutUri = process.env.NEXT_PUBLIC_COGNITO_LOGOUT_URI!;
-      const cognitoDomain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
-      window.location.href = `${cognitoDomain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
-        logoutUri,
-      )}`;
-    } catch (err) {
-      console.error('❌ Error during logout:', err);
-    }
-  };
+  const handleLogout = () => signOutRedirect();
 
   if (!auth.isAuthenticated) return null;
 

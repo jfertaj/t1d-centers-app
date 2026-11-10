@@ -4,6 +4,7 @@
 import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { userManager } from '@lib/auth';
+import { safeNext, DEFAULT_NEXT } from '@lib/safeNext';
 
 export default function CallbackPage() {
   const router = useRouter();
@@ -20,11 +21,10 @@ export default function CallbackPage() {
       try {
         const res = await userManager.signinRedirectCallback();
 
-        let next = '/sites/create';
+        let next = DEFAULT_NEXT;
         if (res?.state) {
           try {
-            const parsed = JSON.parse(res.state as string);
-            if (parsed.next) next = parsed.next;
+            next = safeNext(JSON.parse(res.state as string)?.next);
           } catch {
             // si no se puede parsear, ignoramos
           }
@@ -35,7 +35,7 @@ export default function CallbackPage() {
         console.warn('Callback processing error:', err);
         // Si falla por "No matching state", muchas veces es porque ya se procesó.
         // Redirigir igualmente suele ser seguro si el usuario ya tiene sesión.
-        if (!cancelled) router.replace('/sites/create');
+        if (!cancelled) router.replace(DEFAULT_NEXT);
       }
     })();
 

@@ -75,23 +75,22 @@ export const userManager =
   typeof window !== 'undefined' ? getUserManager() : (null as unknown as UserManager);
 
 // Sign‑out usando el flujo del SDK (mejor que construir URL a mano)
+// Cognito's /logout needs client_id + logout_uri. oidc-client-ts'
+// signoutRedirect() sends id_token_hint + post_logout_redirect_uri instead
+// (and drops client_id), which Cognito answers with an error page, so the
+// Hosted UI URL is built by hand.
 export async function signOutRedirect() {
   if (typeof window === 'undefined') return;
-  try {
-    const um = getUserManager();
-    // Revoca el refresh token: una renovación pendiente en otra pestaña falla
-    // en vez de restaurar la sesión tras el logout.
-    await um.revokeTokens(['refresh_token']).catch(() => undefined);
-    await um.signoutRedirect();
-  } catch (e) {
-    // Fallback: Hosted UI /logout directo
-    const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
-    const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-    const logoutUri = getPostLogoutRedirectUri();
-    window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
-      logoutUri
-    )}`;
-  }
+  const um = getUserManager();
+  // Revoca el refresh token: una renovación pendiente en otra pestaña falla
+  // en vez de restaurar la sesión tras el logout.
+  await um.revokeTokens(['refresh_token']).catch(() => undefined);
+  await um.removeUser().catch(() => undefined);
+  const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
+  const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
+  window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
+    getPostLogoutRedirectUri()
+  )}`;
 }
 
 export async function clearOidcSession() {

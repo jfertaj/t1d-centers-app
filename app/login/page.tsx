@@ -5,6 +5,7 @@ import { useAuth } from 'react-oidc-context';
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { userManager, SSO_PROVIDER } from '@lib/auth';
+import { safeNext, DEFAULT_NEXT } from '@lib/safeNext';
 
 const getRedirectUri = () =>
   process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ||
@@ -18,7 +19,7 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
 
   // a dónde volver tras el login
-  const next = searchParams.get('next') || '/sites/create';
+  const next = safeNext(searchParams.get('next'));
   const redirectUri = getRedirectUri();
 
   // ya autenticado → redirige
