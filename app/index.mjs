@@ -72,21 +72,29 @@ function normalizePath(event) {
   return p;
 }
 
-// DDL can't take bind parameters, so a column DEFAULT must be rendered as a
-// literal. It is validated per type and escaped instead of being interpolated
-// raw (which let a crafted default run arbitrary SQL). Returns '' for no
-// default, the DEFAULT clause, or null when the type/value is not allowed.
+// DDL can't take bind parameters, so a column DEFAULT must be rendered as SQL.
+// The admin UI (AddColumnModal) sends it already formatted: a number, TRUE /
+// FALSE, a temporal keyword, or a quoted '...' literal. Each form is validated
+// and string literals are re-escaped with pg.escapeLiteral, instead of being
+// interpolated raw (which let a crafted default run arbitrary SQL).
+// Returns '' for no default, the DEFAULT clause, or null when not allowed.
 const COLUMN_TYPES = new Set(['TEXT','INTEGER','DOUBLE PRECISION','BOOLEAN','DATE','TIMESTAMP']);
+const TEMPORAL_DEFAULTS = { CURRENT_DATE: 'CURRENT_DATE', CURRENT_TIMESTAMP: 'CURRENT_TIMESTAMP', 'NOW()': 'NOW()' };
 function columnDefault(type, raw) {
   if (!COLUMN_TYPES.has(type)) return null;
   if (raw === undefined || raw === null || raw === '') return '';
   const v = String(raw).trim();
   switch (type) {
     case 'INTEGER':          return /^-?\d+$/.test(v) ? `DEFAULT ${v}` : null;
-    case 'DOUBLE PRECISION': return Number.isFinite(Number(v)) && v !== '' ? `DEFAULT ${Number(v)}` : null;
-    case 'BOOLEAN':          return /^(true|false)$/i.test(v) ? `DEFAULT ${v.toLowerCase()}` : null;
-    default:                 return `DEFAULT ${pgPkg.escapeLiteral(v)}`; // TEXT, DATE, TIMESTAMP
+    case 'DOUBLE PRECISION': return /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(v) ? `DEFAULT ${v}` : null;
+    case 'BOOLEAN':          return /^(true|false)$/i.test(v) ? `DEFAULT ${v.toUpperCase()}` : null;
   }
+  // TEXT, DATE, TIMESTAMP
+  const temporal = TEMPORAL_DEFAULTS[v.toUpperCase()];
+  if (temporal) return type === 'TEXT' ? null : `DEFAULT ${temporal}`;
+  const quoted = v.match(/^'((?:[^']|'')*)'$/);
+  const text = quoted ? quoted[1].replace(/''/g, "'") : v;
+  return `DEFAULT ${pgPkg.escapeLiteral(text)}`;
 }
 
 function parseJsonSafe(s) {
@@ -367,7 +375,9 @@ function mapRuleRowOut(r, hasActive) {
 function mapRuleInToDb(body, existing) {
   const out = {};
   const sent = (k) => Object.prototype.hasOwnProperty.call(body, k);
-  // Primer alias presente en el body; undefined si no se envió ninguno.
+  // Primer alias presente en el body; undefined si no se envió ninguno. El
+  // orden (alias legacy primero) es el del código original, para que un
+  // cliente que reenvía la fila completa del GET siga comportándose igual.
   const pick = (...keys) => {
     const k = keys.find(sent);
     return k === undefined ? undefined : body[k];
@@ -384,10 +394,10 @@ function mapRuleInToDb(body, existing) {
     }
   }
 
-  put(pick('rule_pattern', 'zip_pattern'), 'rule_pattern', 'zip_pattern');
+  put(pick('zip_pattern', 'rule_pattern'), 'rule_pattern', 'zip_pattern');
   put(pick('postal_format'), 'postal_format');
-  put(pick('program_key', 'program_code'), 'program_key', 'program_code');
-  put(pick('program_url', 'website'), 'program_url', 'website');
+  put(pick('program_code', 'program_key'), 'program_key', 'program_code');
+  put(pick('website', 'program_url'), 'program_url', 'website');
   put(pick('message', 'notes'), 'message', 'notes');
 
   return out;
