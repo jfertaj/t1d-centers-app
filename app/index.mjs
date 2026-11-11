@@ -724,7 +724,8 @@ export const handler = async (event) => {
         `&units=metric&mode=driving&key=${apiKey}`;
 
       try {
-        console.log('[distance] calling Google DM… origins=%s destinations=%d', o, limited.length);
+        // No coordinates in the log: they locate the user's postcode.
+        console.log('[distance] calling Google DM… destinations=%d', limited.length);
         const res = await fetch(url, { method: 'GET' });
         const data = await res.json();
 
