@@ -22,8 +22,28 @@ const BRANCHES = new Set(['with_diagnosis', 'without_diagnosis']);
 const SOURCES = new Set(['innodia.org', 'direct', 'search_engine', 'other']);
 
 const VISIT_ID = /^[a-f0-9]{16}$/;
-const COUNTRY = /^[\p{L} .'()-]{2,60}$/u;
-const UTM = /^[a-z0-9_.-]{1,40}$/;
+
+// The navigator's country dropdowns (same list in ExploreSitesFlow and
+// BirthAndLocationForm). Anything else is dropped, so no free text is stored.
+const COUNTRIES = new Set([
+  'Albania', 'Andorra', 'Armenia', 'Austria', 'Azerbaijan', 'Belarus', 'Belgium',
+  'Bosnia and Herzegovina', 'Bulgaria', 'Croatia', 'Cyprus', 'Czech Republic', 'Denmark',
+  'Estonia', 'Finland', 'France', 'Georgia', 'Germany', 'Greece', 'Hungary', 'Iceland',
+  'Ireland', 'Italy', 'Kazakhstan', 'Kosovo', 'Latvia', 'Liechtenstein', 'Lithuania',
+  'Luxembourg', 'Malta', 'Moldova', 'Monaco', 'Montenegro', 'Netherlands', 'North Macedonia',
+  'Norway', 'Poland', 'Portugal', 'Romania', 'Russia', 'San Marino', 'Serbia', 'Slovakia',
+  'Slovenia', 'Spain', 'Sweden', 'Switzerland', 'Turkey', 'Ukraine', 'United Kingdom',
+  'Vatican City',
+]);
+
+// Campaign names for ?utm_source= links. A link could carry anything (even a
+// name), so only these are stored; any other value is recorded as 'other'.
+// Add a channel here before using it in a link.
+export const CAMPAIGNS = new Set([
+  'newsletter', 'email', 'linkedin', 'x', 'twitter', 'facebook', 'instagram', 'bluesky',
+  'youtube', 'whatsapp', 'teams', 'slack', 'qr', 'pdf', 'flyer', 'poster', 'presentation',
+  'conference', 'webinar', 'partner', 'website', 'press',
+]);
 
 const pickEnum = (value, allowed) => (allowed.has(value) ? value : null);
 
@@ -33,22 +53,23 @@ const pickEnum = (value, allowed) => (allowed.has(value) ? value : null);
  */
 export function parseNavigatorEvent(body) {
   if (!body || typeof body !== 'object') return { error: 'Invalid body' };
-  if (!VISIT_ID.test(String(body.v ?? ''))) return { error: 'Invalid visit id' };
+  if (typeof body.v !== 'string' || !VISIT_ID.test(body.v)) return { error: 'Invalid visit id' };
   if (!EVENT_NAMES.has(body.e)) return { error: 'Unknown event' };
 
   const country = typeof body.country === 'string' ? body.country.trim() : '';
   const utm = typeof body.utm === 'string' ? body.utm.trim().toLowerCase() : '';
+  const campaign = utm ? (CAMPAIGNS.has(utm) ? utm : 'other') : null;
   const n = Number.isInteger(body.n) && body.n >= 0 && body.n <= 10000 ? body.n : null;
 
   return {
     row: {
       visit_id: body.v,
       event: body.e,
-      country: COUNTRY.test(country) ? country : null,
+      country: COUNTRIES.has(country) ? country : null,
       flow: pickEnum(body.flow, FLOWS),
       branch: pickEnum(body.branch, BRANCHES),
       source: pickEnum(body.source, SOURCES),
-      utm_source: UTM.test(utm) ? utm : null,
+      utm_source: campaign,
       n_results: n,
       internal: body.internal === true,
     },
@@ -70,21 +91,33 @@ export const CREATE_EVENTS_TABLE = `
     internal    boolean NOT NULL DEFAULT false
   );
   CREATE INDEX IF NOT EXISTS navigator_events_created_at_idx ON navigator_events (created_at);
+  -- One row per visit, event, flow and country: repeats add nothing to the
+  -- report, so they are not stored (bounds what one page load can write).
+  CREATE UNIQUE INDEX IF NOT EXISTS navigator_events_once_idx
+    ON navigator_events (visit_id, event, (coalesce(flow, '')), (coalesce(country, '')));
 `;
 
 export const INSERT_EVENT = `
   INSERT INTO navigator_events (visit_id, event, country, flow, branch, source, utm_source, n_results, internal)
   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  ON CONFLICT DO NOTHING
 `;
 export const insertParams = (r) =>
   [r.visit_id, r.event, r.country, r.flow, r.branch, r.source, r.utm_source, r.n_results, r.internal];
 
 // Every count is "visits (page loads) in which this happened", so a visitor who
-// clicks the same button twice in one visit counts once. Staff visits marked
-// internal are excluded.
-const visitsWhere = (cond) => `COUNT(DISTINCT visit_id) FILTER (WHERE ${cond})::int`;
+// clicks the same button twice in one visit counts once. A visit belongs to the
+// month (UTC) of its first event, so one crossing midnight on the last day of a
+// month is not split. Staff visits marked internal are excluded.
+const visitsWhere = (cond) => `COUNT(DISTINCT e.visit_id) FILTER (WHERE ${cond})::int`;
 export const MONTHLY_STATS = `
-  SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+  WITH visit_month AS (
+    SELECT visit_id, to_char(min(created_at) AT TIME ZONE 'UTC', 'YYYY-MM') AS month
+    FROM navigator_events
+    WHERE NOT internal
+    GROUP BY visit_id
+  )
+  SELECT v.month,
     ${visitsWhere(`event = 'visit'`)} AS visits,
     ${visitsWhere(`event = 'visit' AND source = 'innodia.org'`)} AS from_innodia,
     ${visitsWhere(`event = 'visit' AND source = 'direct'`)} AS from_direct,
@@ -100,8 +133,9 @@ export const MONTHLY_STATS = `
     ${visitsWhere(`event = 'results_shown' AND flow = 'search' AND n_results = 0`)} AS search_no_results,
     ${visitsWhere(`event = 'age_not_eligible'`)} AS search_age_not_eligible,
     ${visitsWhere(`event = 'contact_sent'`)} AS contact_sent
-  FROM navigator_events
-  WHERE NOT internal
+  FROM navigator_events e
+  JOIN visit_month v USING (visit_id)
+  WHERE NOT e.internal
   GROUP BY 1
   ORDER BY 1
 `;
@@ -113,6 +147,7 @@ export const COUNTRY_STATS = `
   WHERE NOT internal AND event = 'results_shown' AND country IS NOT NULL
   GROUP BY 1, 2
   ORDER BY 3 DESC, 1, 2
+  LIMIT 120
 `;
 
 export const CAMPAIGN_STATS = `
@@ -121,4 +156,5 @@ export const CAMPAIGN_STATS = `
   WHERE NOT internal AND event = 'visit' AND utm_source IS NOT NULL
   GROUP BY 1
   ORDER BY 2 DESC, 1
+  LIMIT 50
 `;

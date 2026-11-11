@@ -11,11 +11,11 @@ const V = '0123456789abcdef';
 test('valid events keep only allowed fields', () => {
   const { row } = parseNavigatorEvent({
     v: V, e: 'results_shown', flow: 'search', country: ' Belgium ', n: 3,
-    source: 'innodia.org', utm: 'Newsletter_2026', internal: true, zip: '1000', email: 'x@y.z',
+    source: 'innodia.org', utm: 'Newsletter', internal: true, zip: '1000', email: 'x@y.z',
   });
   assert.deepEqual(row, {
     visit_id: V, event: 'results_shown', country: 'Belgium', flow: 'search', branch: null,
-    source: 'innodia.org', utm_source: 'newsletter_2026', n_results: 3, internal: true,
+    source: 'innodia.org', utm_source: 'newsletter', n_results: 3, internal: true,
   });
 });
 
@@ -23,12 +23,25 @@ test('malformed requests are rejected', () => {
   assert.ok(parseNavigatorEvent(null).error);
   assert.ok(parseNavigatorEvent({ v: 'not-hex', e: 'visit' }).error);
   assert.ok(parseNavigatorEvent({ v: V, e: 'drop_table' }).error);
+  assert.ok(parseNavigatorEvent({ v: { toString: null }, e: 'visit' }).error);
+  assert.ok(parseNavigatorEvent({ v: [V], e: 'visit' }).error);
+});
+
+test('no free text is stored: unknown countries dropped, unknown campaigns become other', () => {
+  const row = (extra) => parseNavigatorEvent({ v: V, e: 'visit', ...extra }).row;
+  assert.equal(row({ country: 'Jane Doe' }).country, null);
+  assert.equal(row({ country: 'Atlantis' }).country, null);
+  assert.equal(row({ country: 'North Macedonia' }).country, 'North Macedonia');
+  assert.equal(row({ utm: 'alice.smith-1985-04-12' }).utm_source, 'other');
+  assert.equal(row({ utm: 'campaign_000001' }).utm_source, 'other');
+  assert.equal(row({ utm: 'LinkedIn' }).utm_source, 'linkedin');
+  assert.equal(row({}).utm_source, null);
 });
 
 test('bad optional values are dropped, not stored', () => {
   const { row } = parseNavigatorEvent({
     v: V, e: 'visit', country: "x'); DROP TABLE y; --", flow: 'admin', branch: 'yes',
-    source: 'evil.com', utm: 'a b<script>', n: -1, internal: 'true',
+    source: 'evil.com', n: -1, internal: 'true',
   });
   for (const k of ['country', 'flow', 'branch', 'source', 'utm_source', 'n_results']) assert.equal(row[k], null, k);
   assert.equal(row.internal, false);
@@ -45,11 +58,12 @@ test('monthly report counts visits, not clicks, and skips internal ones', { skip
   try {
     await db.query('DROP TABLE IF EXISTS navigator_events');
     await db.query(CREATE_EVENTS_TABLE);
-    const add = async (month, v, e, extra = {}) => {
+    const addAt = async (ts, v, e, extra = {}) => {
       const { row } = parseNavigatorEvent({ v, e, ...extra });
-      await db.query(INSERT_EVENT, insertParams(row));
-      await db.query(`UPDATE navigator_events SET created_at = $1 WHERE id = (SELECT max(id) FROM navigator_events)`, [`${month}-15T12:00:00Z`]);
+      const res = await db.query(INSERT_EVENT, insertParams(row));
+      if (res.rowCount) await db.query(`UPDATE navigator_events SET created_at = $1 WHERE id = (SELECT max(id) FROM navigator_events)`, [ts]);
     };
+    const add = (month, v, e, extra) => addAt(`${month}-15T12:00:00Z`, v, e, extra);
     const a = 'aaaaaaaaaaaaaaaa', b = 'bbbbbbbbbbbbbbbb', c = 'cccccccccccccccc', s = 'ffffffffffffffff';
     // October: visit a explores Belgium (clicks twice), visit b searches with results in Spain.
     await add('2026-10', a, 'visit', { source: 'innodia.org' });
@@ -61,6 +75,12 @@ test('monthly report counts visits, not clicks, and skips internal ones', { skip
     await add('2026-10', b, 'search_branch', { branch: 'without_diagnosis' });
     await add('2026-10', b, 'location_submitted', { country: 'Spain' });
     await add('2026-10', b, 'results_shown', { flow: 'search', country: 'Spain', n: 2 });
+    // Repeats in the same visit are stored once.
+    await add('2026-10', b, 'search_click');
+    // Visit e starts on 31 Oct 23:59 UTC and clicks on 1 Nov: counted in October only.
+    const e = 'eeeeeeeeeeeeeeee';
+    await addAt('2026-10-31T23:59:00Z', e, 'visit', { source: 'direct' });
+    await addAt('2026-11-01T00:01:00Z', e, 'explore_click');
     // Staff test visit: ignored everywhere.
     await add('2026-10', s, 'visit', { source: 'direct', internal: true });
     await add('2026-10', s, 'search_click', { internal: true });
@@ -76,8 +96,8 @@ test('monthly report counts visits, not clicks, and skips internal ones', { skip
 
     const { rows } = await db.query(MONTHLY_STATS);
     assert.deepEqual(rows, [
-      { month: '2026-10', visits: 2, from_innodia: 1, from_direct: 1, from_search_engine: 0, from_other: 0,
-        explore_clicks: 1, explore_results: 1, search_clicks: 1, search_with_diagnosis: 0,
+      { month: '2026-10', visits: 3, from_innodia: 1, from_direct: 2, from_search_engine: 0, from_other: 0,
+        explore_clicks: 2, explore_results: 1, search_clicks: 1, search_with_diagnosis: 0,
         search_without_diagnosis: 1, search_location_entered: 1, search_results: 1, search_no_results: 0,
         search_age_not_eligible: 0, contact_sent: 0 },
       { month: '2026-11', visits: 2, from_innodia: 0, from_direct: 0, from_search_engine: 1, from_other: 1,
@@ -91,6 +111,8 @@ test('monthly report counts visits, not clicks, and skips internal ones', { skip
       { flow: 'search', country: 'Spain', visits: 1 },
     ]);
     assert.deepEqual((await db.query(CAMPAIGN_STATS)).rows, [{ utm_source: 'newsletter', visits: 1 }]);
+    const clicks = await db.query(`SELECT count(*)::int AS n FROM navigator_events WHERE visit_id = $1 AND event = 'search_click'`, [b]);
+    assert.equal(clicks.rows[0].n, 1, 'repeated event stored once');
   } finally {
     await db.query('DROP TABLE IF EXISTS navigator_events').catch(() => {});
     await db.end();

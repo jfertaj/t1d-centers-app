@@ -53,9 +53,14 @@ const ADMIN_REGEO_MISSING = `${BASE}/admin/regeo-missing`;
 const sm = new SecretsManagerClient({});
 let pool;                              // DB pool singleton
 let eventsTableReady = null;           // CREATE TABLE IF NOT EXISTS, once per container
+// Two cold containers can race on CREATE ... IF NOT EXISTS; the loser gets a
+// duplicate-object error although the table now exists, so treat that as done.
+const ALREADY_EXISTS = new Set(['42P07', '23505', '42710']);
 function ensureEventsTable(db) {
   // A failed attempt is not cached, so the next request retries.
-  eventsTableReady ??= db.query(CREATE_EVENTS_TABLE).catch((err) => { eventsTableReady = null; throw err; });
+  eventsTableReady ??= db.query(CREATE_EVENTS_TABLE)
+    .catch((err) => { if (!ALREADY_EXISTS.has(err?.code)) throw err; })
+    .catch((err) => { eventsTableReady = null; throw err; });
   return eventsTableReady;
 }
 const tableColumnsCache = new Map();   // cache nombres

@@ -101,7 +101,7 @@ function Report({ usage }: { usage: Usage }) {
         <RankedList
           title="Campaigns (utm_source)"
           rows={usage.campaigns.map((c) => ({ label: c.utm_source, n: c.visits }))}
-          empty="No tagged links used yet. Add ?utm_source=newsletter (etc.) to links in emails, PDFs and QR codes."
+          empty="No tagged links used yet. Add ?utm_source=newsletter (or linkedin, qr, pdf, flyer, conference…; the list is in app/navigatorEvents.mjs) to links in emails, PDFs and QR codes. Unknown names are counted as 'other'."
         />
       </div>
     </>
