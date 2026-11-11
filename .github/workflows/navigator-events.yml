@@ -1,0 +1,51 @@
+name: navigator-events
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/navigatorEvents*'
+      - 'app/index.mjs'
+      - '.github/workflows/navigator-events.yml'
+      - 'package.json'
+      - 'package-lock.json'
+  pull_request:
+    paths:
+      - 'app/navigatorEvents*'
+      - 'app/index.mjs'
+      - '.github/workflows/navigator-events.yml'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: navigator-events-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: navtest
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --omit=dev --ignore-scripts
+      - name: Navigator usage events (validation + report SQL)
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/navtest
+        run: node --test app/navigatorEvents.test.mjs

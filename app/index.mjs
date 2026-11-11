@@ -2,6 +2,10 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import pgPkg from 'pg';
 import net from 'node:net';
+import {
+  parseNavigatorEvent, CREATE_EVENTS_TABLE, INSERT_EVENT, insertParams,
+  MONTHLY_STATS, COUNTRY_STATS, CAMPAIGN_STATS,
+} from './navigatorEvents.mjs';
 
 const { Pool } = pgPkg;
 
@@ -36,6 +40,10 @@ const PROGRAM_RULES       = `${BASE}/program-rules`;
 const PROGRAM_RULE_ID_RE = new RegExp(`^${PROGRAM_RULES}/\\d+$`);
 const ADMIN_CREATE_RULES  = `${BASE}/admin/create-rules-table`;
 
+// Uso del Navigator público: eventos anónimos (POST, público) e informe (admin)
+const NAVIGATOR_EVENTS    = `${BASE}/events`;
+const ADMIN_NAVIGATOR_STATS = `${BASE}/admin/navigator-stats`;
+
 // 👉 NUEVO: re-geocodificar los centros sin lat/lng
 const ADMIN_REGEO_MISSING = `${BASE}/admin/regeo-missing`;
 
@@ -44,6 +52,17 @@ const ADMIN_REGEO_MISSING = `${BASE}/admin/regeo-missing`;
 ========================= */
 const sm = new SecretsManagerClient({});
 let pool;                              // DB pool singleton
+let eventsTableReady = null;           // CREATE TABLE IF NOT EXISTS, once per container
+// Two cold containers can race on CREATE ... IF NOT EXISTS; the loser gets a
+// duplicate-object error although the table now exists, so treat that as done.
+const ALREADY_EXISTS = new Set(['42P07', '23505', '42710']);
+function ensureEventsTable(db) {
+  // A failed attempt is not cached, so the next request retries.
+  eventsTableReady ??= db.query(CREATE_EVENTS_TABLE)
+    .catch((err) => { if (!ALREADY_EXISTS.has(err?.code)) throw err; })
+    .catch((err) => { eventsTableReady = null; throw err; });
+  return eventsTableReady;
+}
 const tableColumnsCache = new Map();   // cache nombres
 const tableMetaCache    = new Map();   // cache metadatos
 
@@ -87,7 +106,7 @@ function isPublicRoute(method, path) {
       || path === PROGRAM_RULES
       || PROGRAM_RULE_ID_RE.test(path);
   }
-  return method === 'POST' && path === DISTANCE;
+  return method === 'POST' && (path === DISTANCE || path === NAVIGATOR_EVENTS);
 }
 
 // HTTP API entrega los arrays de claims como string: "[admin users]"
@@ -638,6 +657,24 @@ export const handler = async (event) => {
       return jsonResponse(200, { ok: true }, origin);
     }
 
+    if (method === 'POST' && path === NAVIGATOR_EVENTS) {
+      const parsed = parseNavigatorEvent(parseJsonSafe(event.body));
+      if (parsed.error) return jsonResponse(400, { error: parsed.error }, origin);
+      const db = await getPool();
+      await ensureEventsTable(db);
+      await db.query(INSERT_EVENT, insertParams(parsed.row));
+      return jsonResponse(202, { ok: true }, origin);
+    }
+
+    if (method === 'GET' && path === ADMIN_NAVIGATOR_STATS) {
+      const db = await getPool();
+      await ensureEventsTable(db);
+      const [months, countries, campaigns] = await Promise.all([
+        db.query(MONTHLY_STATS), db.query(COUNTRY_STATS), db.query(CAMPAIGN_STATS),
+      ]);
+      return jsonResponse(200, { months: months.rows, countries: countries.rows, campaigns: campaigns.rows }, origin);
+    }
+
     if (method === 'GET' && path === ADMIN_STATS) {
       const db = await getPool();
       const [totalRes, countriesRes, geoRes] = await Promise.all([
@@ -724,7 +761,8 @@ export const handler = async (event) => {
         `&units=metric&mode=driving&key=${apiKey}`;
 
       try {
-        console.log('[distance] calling Google DM… origins=%s destinations=%d', o, limited.length);
+        // No coordinates in the log: they locate the user's postcode.
+        console.log('[distance] calling Google DM… destinations=%d', limited.length);
         const res = await fetch(url, { method: 'GET' });
         const data = await res.json();
 

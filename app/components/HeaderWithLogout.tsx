@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { signOutRedirect } from '@lib/auth';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
 import { ADMIN_GROUP } from '@lib/groups';
-import { Settings, List } from 'lucide-react'; // 👈 Iconos corporativos
+import { Settings, List, BarChart3 } from 'lucide-react'; // 👈 Iconos corporativos
 
 export default function HeaderWithLogout() {
   const auth = useAuth();
@@ -42,6 +42,14 @@ export default function HeaderWithLogout() {
                 className="flex items-center gap-2 text-sm font-medium text-white bg-gray-700 border border-gray-700 px-4 py-2 rounded-lg hover:bg-gray-900 transition"
               >
                 <Settings className="w-4 h-4" /> Admin Panel
+              </button>
+
+              {/* Navigator usage report */}
+              <button
+                onClick={() => router.push('/admin/navigator-usage')}
+                className="flex items-center gap-2 text-sm font-medium text-inodia-blue border border-inodia-blue px-4 py-2 rounded-lg hover:bg-inodia-blue hover:text-white transition"
+              >
+                <BarChart3 className="w-4 h-4" /> Navigator Usage
               </button>
 
               {/* Sites List */}
