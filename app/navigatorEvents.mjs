@@ -109,7 +109,7 @@ export const insertParams = (r) =>
 // clicks the same button twice in one visit counts once. A visit belongs to the
 // month (UTC) of its first event, so one crossing midnight on the last day of a
 // month is not split. Staff visits marked internal are excluded.
-const visitsWhere = (cond) => `COUNT(DISTINCT e.visit_id) FILTER (WHERE ${cond})::int`;
+const visitsWhere = (cond) => `COUNT(e.visit_id) FILTER (WHERE ${cond})::int`;
 export const MONTHLY_STATS = `
   WITH visit_month AS (
     SELECT visit_id, to_char(min(created_at) AT TIME ZONE 'UTC', 'YYYY-MM') AS month
@@ -135,6 +135,7 @@ export const MONTHLY_STATS = `
     ${visitsWhere(`event = 'contact_sent'`)} AS contact_sent
   FROM navigator_events e
   JOIN visit_month v USING (visit_id)
+  WHERE NOT e.internal
   GROUP BY 1
   ORDER BY 1
 `;
