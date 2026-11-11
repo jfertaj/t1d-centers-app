@@ -79,7 +79,7 @@ function normalizePath(event) {
 // interpolated raw (which let a crafted default run arbitrary SQL).
 // Returns '' for no default, the DEFAULT clause, or null when not allowed.
 const COLUMN_TYPES = new Set(['TEXT','INTEGER','DOUBLE PRECISION','BOOLEAN','DATE','TIMESTAMP']);
-const TEMPORAL_DEFAULTS = { CURRENT_DATE: 'CURRENT_DATE', CURRENT_TIMESTAMP: 'CURRENT_TIMESTAMP', 'NOW()': 'NOW()' };
+const TEMPORAL_DEFAULTS = new Set(['CURRENT_DATE', 'CURRENT_TIMESTAMP', 'NOW()']);
 function columnDefault(type, raw) {
   if (!COLUMN_TYPES.has(type)) return null;
   if (raw === undefined || raw === null || raw === '') return '';
@@ -90,8 +90,10 @@ function columnDefault(type, raw) {
     case 'BOOLEAN':          return /^(true|false)$/i.test(v) ? `DEFAULT ${v.toUpperCase()}` : null;
   }
   // TEXT, DATE, TIMESTAMP
-  const temporal = TEMPORAL_DEFAULTS[v.toUpperCase()];
-  if (temporal) return type === 'TEXT' ? null : `DEFAULT ${temporal}`;
+  // AddColumnModal sends these bare for any type; Postgres casts them to TEXT
+  // too, which is how the original code behaved.
+  const keyword = v.toUpperCase();
+  if (TEMPORAL_DEFAULTS.has(keyword)) return `DEFAULT ${keyword}`;
   const quoted = v.match(/^'((?:[^']|'')*)'$/);
   const text = quoted ? quoted[1].replace(/''/g, "'") : v;
   return `DEFAULT ${pgPkg.escapeLiteral(text)}`;
@@ -375,12 +377,14 @@ function mapRuleRowOut(r, hasActive) {
 function mapRuleInToDb(body, existing) {
   const out = {};
   const sent = (k) => Object.prototype.hasOwnProperty.call(body, k);
-  // Primer alias presente en el body; undefined si no se envió ninguno. El
-  // orden (alias legacy primero) es el del código original, para que un
-  // cliente que reenvía la fila completa del GET siga comportándose igual.
+  // Primer alias con valor, como el `??` original (alias legacy primero, para
+  // que un cliente que reenvía la fila completa del GET se comporte igual).
+  // Si todos los alias enviados son null, null (borrar); si no se envió
+  // ninguno, undefined (no tocar).
   const pick = (...keys) => {
-    const k = keys.find(sent);
-    return k === undefined ? undefined : body[k];
+    const present = keys.filter(sent);
+    if (!present.length) return undefined;
+    return present.map((k) => body[k]).find((v) => v != null) ?? null;
   };
   // Escribe el valor en todas las columnas-alias que existan en la tabla.
   const put = (value, ...cols) => {
@@ -558,7 +562,9 @@ export const handler = async (event) => {
       for (const c of columns) {
         const name = String(c.name || '').trim();
         const type = String(c.type || '').trim().toUpperCase();
-        if (!name || !type) continue;
+        if (!name || !type) {
+          return jsonResponse(400, { error: 'Every column needs a name and a type' }, origin);
+        }
         if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
           return jsonResponse(400, { error: `Invalid column name: ${name}` }, origin);
         }
