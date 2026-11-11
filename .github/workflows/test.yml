@@ -2,14 +2,28 @@ name: test
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'lib/groups.ts'
+      - '.github/workflows/test.yml'
   pull_request:
+    paths:
+      - 'infra/**'
+      - 'lib/groups.ts'
+      - '.github/workflows/test.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   infra:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
