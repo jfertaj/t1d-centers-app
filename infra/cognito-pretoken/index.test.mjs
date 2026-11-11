@@ -5,8 +5,11 @@ import { handler } from './index.mjs';
 
 const identities = (providerName) => JSON.stringify([{ providerName, userId: 'x' }]);
 
-async function overrideFor(userAttributes, groupsToOverride = []) {
+const FED = 'innodia-m365_abc123';
+
+async function overrideFor(userAttributes, groupsToOverride = [], userName = FED) {
   const event = {
+    userName,
     request: { userAttributes, groupConfiguration: { groupsToOverride, iamRolesToOverride: ['role'], preferredRole: 'role' } },
     response: {},
   };
@@ -14,6 +17,7 @@ async function overrideFor(userAttributes, groupsToOverride = []) {
   return out.response.claimsOverrideDetails.groupOverrideDetails;
 }
 const groupsFor = async (...args) => (await overrideFor(...args)).groupsToOverride;
+const m365 = (email) => ({ email, identities: identities('INNODIA-M365') });
 
 test('INNODIA Microsoft sign-in with @innodia.org email gets admin', async () => {
   assert.deepEqual(await groupsFor({ email: 'a.b@innodia.org', identities: identities('INNODIA-M365') }), ['admin']);
@@ -24,7 +28,15 @@ test('existing groups are kept and admin is not duplicated', async () => {
   const m365 = { email: 'a@innodia.org', identities: identities('INNODIA-M365') };
   assert.deepEqual(await groupsFor(m365, ['users']), ['users', 'admin']);
   assert.deepEqual(await groupsFor(m365, ['admin']), ['admin']);
-  assert.deepEqual(await groupsFor({ email: 'x@gmail.com' }, ['admin']), ['admin']);
+  assert.deepEqual(await groupsFor({ email: 'x@gmail.com' }, ['admin'], 'native-user'), ['admin']);
+});
+
+test('a native account linked to the IdP does not get admin', async () => {
+  // It keeps its own username and can still sign in with its password.
+  assert.deepEqual(await groupsFor(m365('a@innodia.org'), [], 'laura.example'), []);
+  assert.deepEqual(await groupsFor(m365('a@innodia.org'), [], ''), []);
+  // A native username that merely looks like the federated prefix.
+  assert.deepEqual(await groupsFor({ email: 'a@innodia.org' }, [], FED), []);
 });
 
 test('the email domain alone is not enough', async () => {
@@ -51,6 +63,7 @@ test('the rest of the group config is echoed (a null override would drop groups)
 
 test('group name matches the one the app and API require', () => {
   // The Lambda is zipped alone, so it cannot import lib/groups.ts.
-  const groups = readFileSync(new URL('../../lib/groups.ts', import.meta.url), 'utf8');
-  assert.match(groups, /export const ADMIN_GROUP = 'admin';/);
+  const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+  assert.match(read('lib/groups.ts'), /export const ADMIN_GROUP = 'admin';/);
+  assert.match(read('app/index.mjs'), /claimGroups\(claims\)\.includes\('admin'\)/);
 });

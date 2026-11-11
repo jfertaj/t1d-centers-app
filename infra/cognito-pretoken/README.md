@@ -3,17 +3,35 @@
 The admin panel and the API require the `admin` group in the Cognito access
 token (`middleware.ts`, `app/index.mjs`). This Lambda is the user pool's
 **Pre token generation** trigger (event version `V1_0`). It adds `admin` to
-`cognito:groups` in the ID and access tokens when both of these hold:
+`cognito:groups` in the ID and access tokens when all of these hold:
 
-- the user signed in through the `INNODIA-M365` identity provider (the INNODIA
-  Microsoft 365 tenant), read from the `identities` attribute;
-- their email ends in `@innodia.org`.
+- the user is the federated profile Cognito created for the `INNODIA-M365`
+  identity provider (the INNODIA Microsoft 365 tenant): username
+  `innodia-m365_<sub>` plus a matching entry in `identities`. Federated users
+  cannot sign in through the Cognito API, only through Microsoft. A native
+  (password) account linked to the provider keeps its own username, so it is
+  not enough to find the provider in `identities`;
+- their email ends in `@innodia.org`. A native account can set any email, which
+  is why the domain is never checked on its own.
 
-The domain alone is not trusted: a native (password) account can set any email.
-Guests of the tenant sign in with their home email, so they are not admins.
+Nobody has to be added to the group by hand.
 
-Nobody has to be added to the group by hand. The trigger also runs on token
-refresh, so changes reach signed-in users within an access-token lifetime.
+## Limits (accepted, 2026-11-11)
+
+- The email comes from the Entra `email` claim, which Microsoft says not to use
+  for authorization. The owner chose "anyone with an @innodia.org account is an
+  admin". Tenant guests normally carry their home email, but nothing in Entra
+  forbids an @innodia.org email on a non-staff account. For a stricter rule,
+  turn on "Assignment required" on the Entra enterprise app and assign only
+  staff.
+- The user pool sets `AttributesRequireVerificationBeforeUpdate = ["email"]`, so
+  a user cannot switch their own email to an @innodia.org address without
+  receiving the code at that address. Mapped attributes must stay writable by
+  the app client, or Cognito does not store the email Microsoft sends.
+- The trigger also runs on token refresh and reads the stored profile. Someone
+  disabled in Entra keeps admin until their Cognito refresh token expires
+  (`RefreshTokenValidity` on the app client), unless their Cognito user is
+  disabled or signed out globally.
 
 ## Deploy
 

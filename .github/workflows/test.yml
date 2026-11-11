@@ -6,11 +6,17 @@ on:
     paths:
       - 'infra/**'
       - 'lib/groups.ts'
+      - 'lib/adminToken.ts'
+      - 'middleware.ts'
+      - 'app/index.mjs'
       - '.github/workflows/test.yml'
   pull_request:
     paths:
       - 'infra/**'
       - 'lib/groups.ts'
+      - 'lib/adminToken.ts'
+      - 'middleware.ts'
+      - 'app/index.mjs'
       - '.github/workflows/test.yml'
 
 permissions:
