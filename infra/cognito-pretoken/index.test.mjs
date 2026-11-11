@@ -33,7 +33,7 @@ test('existing groups are kept and admin is not duplicated', async () => {
 
 test('a native account linked to the IdP does not get admin', async () => {
   // It keeps its own username and can still sign in with its password.
-  assert.deepEqual(await groupsFor(m365('a@innodia.org'), [], 'laura.example'), []);
+  assert.deepEqual(await groupsFor(m365('a@innodia.org'), [], 'native.user'), []);
   assert.deepEqual(await groupsFor(m365('a@innodia.org'), [], ''), []);
   // A native username that merely looks like the federated prefix.
   assert.deepEqual(await groupsFor({ email: 'a@innodia.org' }, [], FED), []);
