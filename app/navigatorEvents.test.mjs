@@ -100,8 +100,12 @@ const EXPECTED_MONTHS = [
     search_age_not_eligible: 1, contact_sent: 1 },
 ];
 
+// Everything runs in a throwaway schema, so pointing DATABASE_URL at a real
+// database can never touch its navigator_events table.
+const SCHEMA = `navigator_events_test_${process.pid}`;
+
 async function seed(db) {
-  await db.query('DROP TABLE IF EXISTS navigator_events');
+  await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA}; SET search_path TO ${SCHEMA}`);
   await db.query(CREATE_EVENTS_TABLE);
   for (const [ts, v, e, extra = {}] of FIXTURE) {
     const res = await db.query(INSERT_EVENT, insertParams(parseNavigatorEvent({ v, e, ...extra }).row));
@@ -126,7 +130,7 @@ test('monthly report counts visits, not clicks, and skips internal ones', { skip
     const clicks = await db.query(`SELECT count(*)::int AS n FROM navigator_events WHERE visit_id = $1 AND event = 'search_click'`, [B]);
     assert.equal(clicks.rows[0].n, 1, 'repeated event stored once');
   } finally {
-    await db.query('DROP TABLE IF EXISTS navigator_events').catch(() => {});
+    await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE`).catch(() => {});
     await db.end();
   }
 });

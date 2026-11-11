@@ -13,8 +13,9 @@ export function escapeCsvField(raw: unknown): string {
 
 export function downloadCsv(filename: string, header: string[], rows: unknown[][]): void {
   const csv = [header, ...rows].map((r) => r.map(escapeCsvField).join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }));
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: filename });
   a.click();
-  URL.revokeObjectURL(url);
+  // Some browsers start the download asynchronously; free the URL afterwards.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
