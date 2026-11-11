@@ -33,6 +33,7 @@ const DISTANCE            = `${BASE}/distance`;
 
 // Program rules
 const PROGRAM_RULES       = `${BASE}/program-rules`;
+const PROGRAM_RULE_ID_RE = new RegExp(`^${PROGRAM_RULES}/\\d+$`);
 const ADMIN_CREATE_RULES  = `${BASE}/admin/create-rules-table`;
 
 // 👉 NUEVO: re-geocodificar los centros sin lat/lng
@@ -70,6 +71,47 @@ function normalizePath(event) {
   const stage = event.requestContext?.stage;
   if (stage && p.startsWith(`/${stage}`)) p = p.slice(stage.length + 1);
   return p;
+}
+
+/* =========================
+   AuthZ: solo el navegador público lee sin token
+========================= */
+// Rutas que usa el Navigator público (innodia-t1d-navigator.org) sin login.
+// Todo lo demás exige un access token de Cognito del grupo `admin`. El JWT lo
+// valida el authorizer del API Gateway (firma, issuer, client_id); aquí solo
+// leemos sus claims ya verificados. Sin claims => 401 (falla cerrado aunque
+// una ruta del gateway quede mal configurada sin authorizer).
+function isPublicRoute(method, path) {
+  if (method === 'GET') {
+    return path === CENTERS
+      || path === PROGRAM_RULES
+      || PROGRAM_RULE_ID_RE.test(path);
+  }
+  return method === 'POST' && path === DISTANCE;
+}
+
+// HTTP API entrega los arrays de claims como string: "[admin users]"
+// (también se acepta la forma JSON '["admin","users"]').
+function claimGroups(claims) {
+  const raw = claims?.['cognito:groups'];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw !== 'string') return [];
+  return raw
+    .replace(/^\[|\]$/g, '')
+    .split(/[\s,]+/)
+    .map((g) => g.replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
+}
+
+function authzError(event, method, path) {
+  if (isPublicRoute(method, path)) return null;
+  const claims = event.requestContext?.authorizer?.jwt?.claims;
+  if (!claims) return { status: 401, error: 'Authentication required' };
+  // The HTTP API JWT authorizer accepts any token whose aud/client_id matches,
+  // which includes ID tokens. Only access tokens may authorize calls.
+  if (claims.token_use !== 'access') return { status: 401, error: 'Access token required' };
+  if (!claimGroups(claims).includes('admin')) return { status: 403, error: 'Admin group required' };
+  return null;
 }
 
 // DDL can't take bind parameters, so a column DEFAULT must be rendered as SQL.
@@ -417,6 +459,9 @@ export const handler = async (event) => {
 
   // CORS preflight
   if (method === 'OPTIONS') return jsonResponse(200, { ok: true }, origin);
+
+  const denied = authzError(event, method, path);
+  if (denied) return jsonResponse(denied.status, { error: denied.error }, origin);
 
   try {
     /* ---------- Health & Debug ---------- */

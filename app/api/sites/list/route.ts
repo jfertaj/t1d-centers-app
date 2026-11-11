@@ -1,10 +1,11 @@
 // app/api/sites/list/route.ts
 // app/api/sites/list/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const base = process.env.NEXT_PUBLIC_API_BASE;
     if (!base) {
@@ -12,7 +13,7 @@ export async function GET() {
     }
 
     // La Lambda en GET /centers ya hace SELECT * FROM clinical_centers
-    const upstream = await fetch(`${base}/centers`, { cache: 'no-store' });
+    const upstream = await fetch(`${base}/centers`, { cache: 'no-store', headers: forwardAuth(req) });
     const text = await upstream.text();
 
     let data: any;

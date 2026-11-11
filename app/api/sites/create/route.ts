@@ -1,5 +1,6 @@
 // app/api/sites/create/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
     }
 
     const created = await apiFetch('/centers', {
+      headers: forwardAuth(req),
       method: 'POST',
       body: payload,
     });

@@ -4,7 +4,8 @@
 import { useAuth } from 'react-oidc-context';
 import { useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { userManager } from '@lib/auth';
+import { userManager, SSO_PROVIDER } from '@lib/auth';
+import { safeNext, DEFAULT_NEXT } from '@lib/safeNext';
 
 const getRedirectUri = () =>
   process.env.NEXT_PUBLIC_COGNITO_REDIRECT_URI ||
@@ -18,7 +19,7 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
 
   // a dónde volver tras el login
-  const next = searchParams.get('next') || '/sites/create';
+  const next = safeNext(searchParams.get('next'));
   const redirectUri = getRedirectUri();
 
   // ya autenticado → redirige
@@ -47,6 +48,7 @@ export default function LoginPage() {
     auth.signinRedirect?.({
       redirect_uri: redirectUri,
       state: JSON.stringify({ next }),
+      extraQueryParams: { identity_provider: SSO_PROVIDER },
     });
   };
 
@@ -91,7 +93,7 @@ export default function LoginPage() {
         <h1 className="title">Secure Login</h1>
       </div>
       <p className="subtitle mb-6">Please log in to access the clinical centers dashboard.</p>
-      <button onClick={startLogin} className="button-blue">Sign in with Cognito</button>
+      <button onClick={startLogin} className="button-blue">Sign in with your INNODIA Microsoft account</button>
     </div>
   );
 }

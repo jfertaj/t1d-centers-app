@@ -7,7 +7,11 @@ set +H
 # ==== Config ====
 API_BASE="https://o4ouasjufi.execute-api.eu-west-1.amazonaws.com/prod/t1d-centers-proxy"
 ORIGIN="https://t1d-centers-app.org"
-ADMIN_TOKEN='S3cret-Token-2025!'
+# Secrets come from the environment, never from this (public) repo:
+#   ACCESS_TOKEN = Cognito access token of a user in the `admin` group
+#   ADMIN_TOKEN  = legacy X-Admin-Token for the /admin/* schema endpoints
+: "${ACCESS_TOKEN:?export ACCESS_TOKEN (Cognito access token, admin group)}"
+: "${ADMIN_TOKEN:?export ADMIN_TOKEN}"
 
 # Curl helper
 req() {
@@ -21,14 +25,14 @@ req() {
     echo "$DATA"
   fi
   if [[ -n "$DATA" ]]; then
-    curl -sS -i \
+    curl -sS -i -H "Authorization: Bearer $ACCESS_TOKEN" \
       -H "Origin: $ORIGIN" \
       -H "Content-Type: application/json" \
       -X "$METHOD" \
       --data "$DATA" \
       "$API_BASE$PATH"
   else
-    curl -sS -i \
+    curl -sS -i -H "Authorization: Bearer $ACCESS_TOKEN" \
       -H "Origin: $ORIGIN" \
       -X "$METHOD" \
       "$API_BASE$PATH"
@@ -49,7 +53,7 @@ admin_req() {
     echo "$DATA"
   fi
   if [[ -n "$DATA" ]]; then
-    curl -sS -i \
+    curl -sS -i -H "Authorization: Bearer $ACCESS_TOKEN" \
       -H "Origin: $ORIGIN" \
       -H "X-Admin-Token: $ADMIN_TOKEN" \
       -H "Content-Type: application/json" \
@@ -57,7 +61,7 @@ admin_req() {
       --data "$DATA" \
       "$API_BASE$PATH"
   else
-    curl -sS -i \
+    curl -sS -i -H "Authorization: Bearer $ACCESS_TOKEN" \
       -H "Origin: $ORIGIN" \
       -H "X-Admin-Token: $ADMIN_TOKEN" \
       -X "$METHOD" \
@@ -84,7 +88,7 @@ CREATE_BODY='{
   "email_1": "juanperez@example.com",
   "phone_1": "+34 600 123 456"
 }'
-CREATE_RESP=$(curl -sS \
+CREATE_RESP=$(curl -sS -H "Authorization: Bearer $ACCESS_TOKEN" \
   -H "Origin: $ORIGIN" \
   -H "Content-Type: application/json" \
   -X POST \

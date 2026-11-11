@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -9,7 +10,7 @@ export async function DELETE(req: Request) {
     if (!Number.isFinite(id)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
     const apiBase = process.env.NEXT_PUBLIC_API_BASE!;
-    const resp = await fetch(`${apiBase}/program-rules/${id}`, { method: 'DELETE' });
+    const resp = await fetch(`${apiBase}/program-rules/${id}`, { method: 'DELETE', headers: forwardAuth(req) });
     const txt = await resp.text();
     let json: any; try { json = JSON.parse(txt); } catch { json = { message: txt }; }
     return NextResponse.json(json, { status: resp.status });

@@ -9,6 +9,7 @@ import {
   type MRT_TableInstance,
 } from 'material-react-table';
 import Link from 'next/link';
+import { authFetch } from '@lib/authFetch';
 
 type Rule = {
   id: number;
@@ -42,7 +43,7 @@ export default function AdminProgramRulesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/program-rules/list', { cache: 'no-store' });
+        const res = await authFetch('/api/program-rules/list', { cache: 'no-store' });
         const rows = await res.json();
         setData(Array.isArray(rows) ? rows : []);
       } catch {
@@ -98,7 +99,7 @@ export default function AdminProgramRulesPage() {
     if (clean.active === 'true') clean.active = true;
     if (clean.active === 'false') clean.active = false;
 
-    const res = await fetch('/api/program-rules/create', {
+    const res = await authFetch('/api/program-rules/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(clean),
@@ -116,7 +117,7 @@ export default function AdminProgramRulesPage() {
         if (Number.isNaN(clean[k])) clean[k] = null;
       }
     });
-    const res = await fetch(`/api/program-rules/${id}`, {
+    const res = await authFetch(`/api/program-rules/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(clean),
@@ -126,7 +127,7 @@ export default function AdminProgramRulesPage() {
   }
 
   async function deleteRule(id: number) {
-    const res = await fetch(`/api/program-rules/${id}`, { method: 'DELETE' });
+    const res = await authFetch(`/api/program-rules/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   }

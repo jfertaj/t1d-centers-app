@@ -1,5 +1,6 @@
 // app/api/program-rules/create/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const resp = await fetch(`${base}/program-rules`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...forwardAuth(req), 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 

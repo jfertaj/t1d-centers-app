@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import ConfirmModal from './ConfirmModal';
 import EditModal from './EditModal';
+import { authFetch } from '@lib/authFetch';
 
 // Tarjeta resumen
 function StatCard({ label, value }: { label: string; value: string | number }) {
@@ -47,7 +48,7 @@ export default function AdminCenterEditor() {
     async function fetchData() {
       try {
         // evita caché del navegador/edge
-        const res = await fetch('/api/sites/list', { cache: 'no-store' });
+        const res = await authFetch('/api/sites/list', { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed fetching centers');
         const result = await res.json();
         setData(result.centers || result);
@@ -67,7 +68,7 @@ export default function AdminCenterEditor() {
   const confirmDelete = async () => {
     if (!centerToDelete) return;
     try {
-      const res = await fetch(`/api/sites/admin/delete/${centerToDelete.id}`, {
+      const res = await authFetch(`/api/sites/admin/delete/${centerToDelete.id}`, {
         method: 'DELETE',
       });
       if (!res.ok) throw new Error('Delete failed');

@@ -4,6 +4,7 @@
 import React, { useRef, useState, forwardRef } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
+import { authFetch } from '@lib/authFetch';
 
 type Form = {
   name: string;
@@ -93,7 +94,7 @@ export default function RegisterForm() {
         country: form.country,
       };
 
-      const res = await fetch(`${API_BASE}/geocoding/verify`, {
+      const res = await authFetch(`${API_BASE}/geocoding/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -196,7 +197,7 @@ export default function RegisterForm() {
         if ((payload as any)[k] === '') (payload as any)[k] = null;
       });
 
-      const res = await fetch(`${API_BASE}/centers`, {
+      const res = await authFetch(`${API_BASE}/centers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

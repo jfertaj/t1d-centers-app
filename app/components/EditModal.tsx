@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
+import { authFetch } from '@lib/authFetch';
 
 type Center = {
   id: number;
@@ -46,7 +47,7 @@ export default function EditModal({ isOpen, center, onClose, onSave }: EditCente
     if (!form) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/sites/admin/update/${form.id}`, {
+      const res = await authFetch(`/api/sites/admin/update/${form.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),

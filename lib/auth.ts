@@ -57,33 +57,40 @@ export function getUserManager(): UserManager {
     scope: 'openid email',
     // Almacenamiento en localStorage del navegador
     userStore: new WebStorageStateStore({ store: window.localStorage }),
-    // Renovación silenciosa (si en el futuro habilitas iframe de silent renew)
-    automaticSilentRenew: false,
+    // Renueva el access token con el refresh token de Cognito antes de que
+    // caduque: las APIs ahora exigen un token válido en cada llamada.
+    automaticSilentRenew: true,
     // timeouts por defecto están bien; puedes ajustarlos si lo necesitas
   });
 
   return _userManager;
 }
 
+// Proveedor federado (Microsoft 365 de INNODIA) del user pool. Al pasarlo
+// como `identity_provider`, Cognito salta su pantalla y va directo a Microsoft.
+export const SSO_PROVIDER = process.env.NEXT_PUBLIC_COGNITO_IDP || 'INNODIA-M365';
+
 // Para AuthProvider: crea el userManager solo en cliente
 export const userManager =
   typeof window !== 'undefined' ? getUserManager() : (null as unknown as UserManager);
 
 // Sign‑out usando el flujo del SDK (mejor que construir URL a mano)
+// Cognito's /logout needs client_id + logout_uri. oidc-client-ts'
+// signoutRedirect() sends id_token_hint + post_logout_redirect_uri instead
+// (and drops client_id), which Cognito answers with an error page, so the
+// Hosted UI URL is built by hand.
 export async function signOutRedirect() {
   if (typeof window === 'undefined') return;
-  try {
-    const um = getUserManager();
-    await um.signoutRedirect();
-  } catch (e) {
-    // Fallback: Hosted UI /logout directo
-    const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
-    const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-    const logoutUri = getPostLogoutRedirectUri();
-    window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
-      logoutUri
-    )}`;
-  }
+  const um = getUserManager();
+  // Revoca el refresh token: una renovación pendiente en otra pestaña falla
+  // en vez de restaurar la sesión tras el logout.
+  await um.revokeTokens(['refresh_token']).catch(() => undefined);
+  await um.removeUser().catch(() => undefined);
+  const domain = process.env.NEXT_PUBLIC_COGNITO_DOMAIN!;
+  const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
+  window.location.href = `${domain}/logout?client_id=${clientId}&logout_uri=${encodeURIComponent(
+    getPostLogoutRedirectUri()
+  )}`;
 }
 
 export async function clearOidcSession() {

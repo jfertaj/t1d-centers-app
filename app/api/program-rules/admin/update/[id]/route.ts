@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 import { apiFetch } from '@lib/api';
 
 export const runtime = 'nodejs';
@@ -10,7 +11,8 @@ export async function PUT(req: Request) {
     if (!Number.isFinite(id)) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
     const body = await req.json();
-    const updated = await apiFetch(`/program-rules/${id}`, { method: 'PUT', body });
+    const updated = await apiFetch(`/program-rules/${id}`, {
+      headers: forwardAuth(req), method: 'PUT', body });
     return NextResponse.json(updated, { status: 200 });
   } catch (err: any) {
     console.error('rules update error:', err);

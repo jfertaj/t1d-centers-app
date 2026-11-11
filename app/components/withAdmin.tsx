@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useRouter, usePathname } from 'next/navigation';
 import { useCognitoGroups } from '@lib/hooks/useCognitoGroups';
+import { ADMIN_GROUP } from '@lib/groups';
 
 export default function withAdmin<P>(Wrapped: React.ComponentType<P>) {
   return function AdminGuard(props: P) {
@@ -13,7 +14,7 @@ export default function withAdmin<P>(Wrapped: React.ComponentType<P>) {
 
     // ✅ grupos normalizados y tipados: string[]
     const groups = useCognitoGroups();
-    const isAdmin = groups.includes('admin');
+    const isAdmin = groups.includes(ADMIN_GROUP);
 
     const [authorized, setAuthorized] = useState(false);
 

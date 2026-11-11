@@ -1,5 +1,6 @@
 // app/api/sites/admin/delete/[id]/route.ts
 import { NextResponse } from 'next/server';
+import { forwardAuth } from '@lib/adminToken';
 
 export const runtime = 'nodejs';
 
@@ -28,7 +29,7 @@ export async function DELETE(req: Request) {
     // Llama a tu backend real
     const resp = await fetch(`${apiBase}/centers/${numericId}`, {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...forwardAuth(req), 'Content-Type': 'application/json' },
       // credentials: 'include', // si algún día usas cookies
     });
 
