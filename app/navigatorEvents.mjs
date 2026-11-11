@@ -135,7 +135,6 @@ export const MONTHLY_STATS = `
     ${visitsWhere(`event = 'contact_sent'`)} AS contact_sent
   FROM navigator_events e
   JOIN visit_month v USING (visit_id)
-  WHERE NOT e.internal
   GROUP BY 1
   ORDER BY 1
 `;
