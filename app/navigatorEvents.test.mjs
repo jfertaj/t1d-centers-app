@@ -52,66 +52,78 @@ test('bad optional values are dropped, not stored', () => {
 const url = process.env.DATABASE_URL;
 if (process.env.CI && !url) throw new Error('DATABASE_URL must be set in CI so the SQL tests run');
 
+const [A, B, C, D, E, S] = ['a', 'b', 'c', 'd', 'e', 'f'].map((ch) => ch.repeat(16));
+const mid = (month) => `${month}-15T12:00:00Z`;
+// [timestamp, visit, event, extra]
+const FIXTURE = [
+  // October: visit A explores Belgium (clicks twice).
+  [mid('2026-10'), A, 'visit', { source: 'innodia.org' }],
+  [mid('2026-10'), A, 'explore_click'],
+  [mid('2026-10'), A, 'explore_click'],
+  [mid('2026-10'), A, 'results_shown', { flow: 'explore', country: 'Belgium', n: 4 }],
+  // Visit B searches Spain with results, repeats a click (stored once), goes
+  // back to the other branch and gets no results, then results again: each
+  // distinct outcome still counts once.
+  [mid('2026-10'), B, 'visit', { source: 'direct', utm: 'newsletter' }],
+  [mid('2026-10'), B, 'search_click'],
+  [mid('2026-10'), B, 'search_branch', { branch: 'without_diagnosis' }],
+  [mid('2026-10'), B, 'location_submitted', { country: 'Spain' }],
+  [mid('2026-10'), B, 'results_shown', { flow: 'search', country: 'Spain', n: 2 }],
+  [mid('2026-10'), B, 'search_click'],
+  [mid('2026-10'), B, 'search_branch', { branch: 'with_diagnosis' }],
+  [mid('2026-10'), B, 'results_shown', { flow: 'search', country: 'Spain', n: 0 }],
+  [mid('2026-10'), B, 'results_shown', { flow: 'search', country: 'Spain', n: 5 }],
+  // Visit E starts on 31 Oct 23:59 UTC and clicks on 1 Nov: October only.
+  ['2026-10-31T23:59:00Z', E, 'visit', { source: 'direct' }],
+  ['2026-11-01T00:01:00Z', E, 'explore_click'],
+  // Staff test visit: ignored everywhere.
+  [mid('2026-10'), S, 'visit', { source: 'direct', internal: true }],
+  [mid('2026-10'), S, 'search_click', { internal: true }],
+  // November: visit D is not eligible by age; visit C finds nothing and sends the contact form.
+  [mid('2026-11'), D, 'visit', { source: 'other' }],
+  [mid('2026-11'), D, 'age_not_eligible'],
+  [mid('2026-11'), C, 'visit', { source: 'search_engine' }],
+  [mid('2026-11'), C, 'search_click'],
+  [mid('2026-11'), C, 'search_branch', { branch: 'with_diagnosis' }],
+  [mid('2026-11'), C, 'results_shown', { flow: 'search', country: 'Malta', n: 0 }],
+  [mid('2026-11'), C, 'contact_sent'],
+];
+
+const EXPECTED_MONTHS = [
+  { month: '2026-10', visits: 3, from_innodia: 1, from_direct: 2, from_search_engine: 0, from_other: 0,
+    explore_clicks: 2, explore_results: 1, search_clicks: 1, search_with_diagnosis: 1,
+    search_without_diagnosis: 1, search_location_entered: 1, search_results: 1, search_no_results: 1,
+    search_age_not_eligible: 0, contact_sent: 0 },
+  { month: '2026-11', visits: 2, from_innodia: 0, from_direct: 0, from_search_engine: 1, from_other: 1,
+    explore_clicks: 0, explore_results: 0, search_clicks: 1, search_with_diagnosis: 1,
+    search_without_diagnosis: 0, search_location_entered: 0, search_results: 0, search_no_results: 1,
+    search_age_not_eligible: 1, contact_sent: 1 },
+];
+
+async function seed(db) {
+  await db.query('DROP TABLE IF EXISTS navigator_events');
+  await db.query(CREATE_EVENTS_TABLE);
+  for (const [ts, v, e, extra = {}] of FIXTURE) {
+    const res = await db.query(INSERT_EVENT, insertParams(parseNavigatorEvent({ v, e, ...extra }).row));
+    if (res.rowCount) {
+      await db.query('UPDATE navigator_events SET created_at = $1 WHERE id = (SELECT max(id) FROM navigator_events)', [ts]);
+    }
+  }
+}
+
 test('monthly report counts visits, not clicks, and skips internal ones', { skip: !url }, async () => {
   const db = new pg.Client({ connectionString: url });
   await db.connect();
   try {
-    await db.query('DROP TABLE IF EXISTS navigator_events');
-    await db.query(CREATE_EVENTS_TABLE);
-    const addAt = async (ts, v, e, extra = {}) => {
-      const { row } = parseNavigatorEvent({ v, e, ...extra });
-      const res = await db.query(INSERT_EVENT, insertParams(row));
-      if (res.rowCount) await db.query(`UPDATE navigator_events SET created_at = $1 WHERE id = (SELECT max(id) FROM navigator_events)`, [ts]);
-    };
-    const add = (month, v, e, extra) => addAt(`${month}-15T12:00:00Z`, v, e, extra);
-    const a = 'aaaaaaaaaaaaaaaa', b = 'bbbbbbbbbbbbbbbb', c = 'cccccccccccccccc', s = 'ffffffffffffffff';
-    // October: visit a explores Belgium (clicks twice), visit b searches with results in Spain.
-    await add('2026-10', a, 'visit', { source: 'innodia.org' });
-    await add('2026-10', a, 'explore_click');
-    await add('2026-10', a, 'explore_click');
-    await add('2026-10', a, 'results_shown', { flow: 'explore', country: 'Belgium', n: 4 });
-    await add('2026-10', b, 'visit', { source: 'direct', utm: 'newsletter' });
-    await add('2026-10', b, 'search_click');
-    await add('2026-10', b, 'search_branch', { branch: 'without_diagnosis' });
-    await add('2026-10', b, 'location_submitted', { country: 'Spain' });
-    await add('2026-10', b, 'results_shown', { flow: 'search', country: 'Spain', n: 2 });
-    // Repeats in the same visit are stored once.
-    await add('2026-10', b, 'search_click');
-    // Visit e starts on 31 Oct 23:59 UTC and clicks on 1 Nov: counted in October only.
-    const e = 'eeeeeeeeeeeeeeee';
-    await addAt('2026-10-31T23:59:00Z', e, 'visit', { source: 'direct' });
-    await addAt('2026-11-01T00:01:00Z', e, 'explore_click');
-    // Staff test visit: ignored everywhere.
-    await add('2026-10', s, 'visit', { source: 'direct', internal: true });
-    await add('2026-10', s, 'search_click', { internal: true });
-    // November: visit d is too old/young for any programme in its country.
-    await add('2026-11', 'dddddddddddddddd', 'visit', { source: 'other' });
-    await add('2026-11', 'dddddddddddddddd', 'age_not_eligible');
-    // November: visit c searches, finds nothing, sends the contact form.
-    await add('2026-11', c, 'visit', { source: 'search_engine' });
-    await add('2026-11', c, 'search_click');
-    await add('2026-11', c, 'search_branch', { branch: 'with_diagnosis' });
-    await add('2026-11', c, 'results_shown', { flow: 'search', country: 'Malta', n: 0 });
-    await add('2026-11', c, 'contact_sent');
-
-    const { rows } = await db.query(MONTHLY_STATS);
-    assert.deepEqual(rows, [
-      { month: '2026-10', visits: 3, from_innodia: 1, from_direct: 2, from_search_engine: 0, from_other: 0,
-        explore_clicks: 2, explore_results: 1, search_clicks: 1, search_with_diagnosis: 0,
-        search_without_diagnosis: 1, search_location_entered: 1, search_results: 1, search_no_results: 0,
-        search_age_not_eligible: 0, contact_sent: 0 },
-      { month: '2026-11', visits: 2, from_innodia: 0, from_direct: 0, from_search_engine: 1, from_other: 1,
-        explore_clicks: 0, explore_results: 0, search_clicks: 1, search_with_diagnosis: 1,
-        search_without_diagnosis: 0, search_location_entered: 0, search_results: 0, search_no_results: 1,
-        search_age_not_eligible: 1, contact_sent: 1 },
-    ]);
+    await seed(db);
+    assert.deepEqual((await db.query(MONTHLY_STATS)).rows, EXPECTED_MONTHS);
     assert.deepEqual((await db.query(COUNTRY_STATS)).rows, [
       { flow: 'explore', country: 'Belgium', visits: 1 },
       { flow: 'search', country: 'Malta', visits: 1 },
       { flow: 'search', country: 'Spain', visits: 1 },
     ]);
     assert.deepEqual((await db.query(CAMPAIGN_STATS)).rows, [{ utm_source: 'newsletter', visits: 1 }]);
-    const clicks = await db.query(`SELECT count(*)::int AS n FROM navigator_events WHERE visit_id = $1 AND event = 'search_click'`, [b]);
+    const clicks = await db.query(`SELECT count(*)::int AS n FROM navigator_events WHERE visit_id = $1 AND event = 'search_click'`, [B]);
     assert.equal(clicks.rows[0].n, 1, 'repeated event stored once');
   } finally {
     await db.query('DROP TABLE IF EXISTS navigator_events').catch(() => {});

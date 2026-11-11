@@ -7,11 +7,15 @@ on:
       - 'app/navigatorEvents*'
       - 'app/index.mjs'
       - '.github/workflows/navigator-events.yml'
+      - 'package.json'
+      - 'package-lock.json'
   pull_request:
     paths:
       - 'app/navigatorEvents*'
       - 'app/index.mjs'
       - '.github/workflows/navigator-events.yml'
+      - 'package.json'
+      - 'package-lock.json'
 
 permissions:
   contents: read

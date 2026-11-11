@@ -91,10 +91,13 @@ export const CREATE_EVENTS_TABLE = `
     internal    boolean NOT NULL DEFAULT false
   );
   CREATE INDEX IF NOT EXISTS navigator_events_created_at_idx ON navigator_events (created_at);
-  -- One row per visit, event, flow and country: repeats add nothing to the
-  -- report, so they are not stored (bounds what one page load can write).
+  -- One row per visit and per value the report distinguishes (event, flow,
+  -- country, branch, results or not): repeats add nothing to the report, so
+  -- they are not stored, which bounds what one page load can write. coalesce
+  -- because NULLs never conflict in a unique index.
   CREATE UNIQUE INDEX IF NOT EXISTS navigator_events_once_idx
-    ON navigator_events (visit_id, event, (coalesce(flow, '')), (coalesce(country, '')));
+    ON navigator_events (visit_id, event, (coalesce(flow, '')), (coalesce(country, '')),
+                         (coalesce(branch, '')), (coalesce(n_results > 0, false)));
 `;
 
 export const INSERT_EVENT = `
